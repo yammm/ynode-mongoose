@@ -1,0 +1,118 @@
+# @ynode/mongoose
+
+Copyright (c) 2026 Michael Welter <me@mikinho.com>
+
+[![npm version](https://img.shields.io/npm/v/@ynode/mongoose.svg)](https://www.npmjs.com/package/@ynode/mongoose)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A better [Mongoose](https://mongoosejs.com/) [Fastify](https://www.fastify.io/) plugin for connection sharing and useful logging
+
+## Why?
+
+A lightweight **Fastify** plugin that exposes a single **mongoose** client (`mongoose` package) on your Fastify instance and handles connection lifecycle (connect → ready → reconnect → close) for you.
+
+- ✅ Uses the **official** [`mongoose`](https://www.npmjs.com/package/mongoose) client
+- ✅ Clean Fastify integration with proper startup/shutdown hooks
+- ✅ Simple API: `fastify.mongoose` everywhere in your app
+
+## Installation
+
+Install the package and its required peer dependency, `mongoose`.
+
+```sh
+npm install @ynode/mongoose mongoose
+
+```
+
+## Basic Usage
+
+```javascript
+import mongoose from "@ynode/mongoose";
+
+if (fastify.argv.mongoose) {
+    // connect to mongoose
+    await fastify.register(mongoose, { uri: fastify.argv.mongoose });
+}
+```
+
+## Usage
+
+Register the plugin with your Fastify instance. You MUST provide a `uri` option. Any other options you provide are passed directly to the underlying `mongoose.createConnection` method.
+
+### Registering the Plugin
+
+```javascript
+import Fastify from "fastify";
+import fastifyMongoose from "@ynode/mongoose";
+
+const fastify = Fastify({
+    logger: true
+});
+
+// Register the plugin with options
+await fastify.register(fastifyMongoose, {
+    uri: "mongodb://localhost:27017/my_database",
+    // Options below are passed to mongoose.createConnection
+    maxPoolSize: 10
+});
+
+// Or simply with a connection string
+await fastify.register(fastifyMongoose, "mongodb://localhost:27017/my_database");
+```
+
+### Using the Connection
+
+The Mongoose connection is available at `fastify.mongoose`. You should use this connection to create your models to ensure they are bound to this specific connection.
+
+```javascript
+// Define a schema
+const UserSchema = new fastify.mongoose.base.Schema({
+    name: String,
+    email: String
+});
+
+// Create a model attached to this connection
+// Note: We use fastify.mongoose.model, NOT logging mongoose.model global
+const User = fastify.mongoose.model('User', UserSchema);
+
+// Route example
+fastify.get("/users", async (request, reply) => {
+    const users = await User.find();
+    return users;
+});
+
+const start = async () => {
+    try {
+        await fastify.listen({ port: 3000 });
+    } catch (err) {
+        fastify.log.error(err);
+        process.exit(1);
+    }
+};
+
+start();
+```
+
+## Options
+
+This plugin passes all options directly to the `createConnection` function from the official `mongoose` library.
+
+For a full list of available options, please see the **[official `mongoose` documentation](https://mongoosejs.com/docs/api/connection.html)**.
+
+## Release
+
+To release a new version, use the included Makefile.
+
+```sh
+make release VERSION=1.2.3
+```
+
+This command will:
+1.  Check that `npm` and `package.json` exist.
+2.  Run `npm version` to update `package.json` and create a git tag.
+3.  Publish the package to npm.
+4.  Push the commit and tags to the git remote.
+
+## License
+
+This project is licensed under the [MIT License](./LICENSE).
