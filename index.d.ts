@@ -22,11 +22,13 @@ export interface FastifyMongooseOptions extends ConnectOptions {
     name?: string;
 }
 
+export type FastifyMongoosePluginOptions = FastifyMongooseOptions | string;
+
 /**
  * Fastify Mongoose Plugin
- * 
+ *
  * Accepts either a FastifyMongooseOptions object or a connection string.
  */
-declare const fastifyMongoose: FastifyPluginAsync<any>;
+declare const fastifyMongoose: FastifyPluginAsync<FastifyMongoosePluginOptions>;
 
 export default fastifyMongoose;

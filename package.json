@@ -48,7 +48,7 @@
         "ver:preview": "npx autover --no-amend --dry-run --short",
         "ver:apply": "npx autover --guard-unchanged --short",
         "test": "node --test",
-        "prepublishOnly": "npm test || true",
+        "prepublishOnly": "npm test",
         "postversion": "git push && git push --tags"
     },
     "publishConfig": {
@@ -56,6 +56,7 @@
     },
     "files": [
         "src",
+        "index.d.ts",
         "README.md",
         "LICENSE"
     ],
@@ -63,7 +64,7 @@
         "fastify-plugin": "^5.1.0",
         "mongoose": "^9.1.5"
     },
-    "peerDependency": {
+    "peerDependencies": {
         "mongoose": "^9.1.5"
     }
 }
