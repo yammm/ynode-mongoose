@@ -17,6 +17,11 @@ export interface FastifyMongooseOptions extends ConnectOptions {
     uri: string;
 
     /**
+     * If true (default), Fastify startup fails when initial MongoDB connection fails.
+     */
+    waitForConnection?: boolean;
+
+    /**
      * Optionally set a connection name. Useful for debugging specific connections.
      */
     name?: string;

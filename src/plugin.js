@@ -43,6 +43,7 @@ function redactMongoUri(uri) {
  * @param {FastifyInstance} fastify The Fastify instance.
  * @param {object} options Plugin options, directly passed to connection.openUri.
  * @param {String} options.uri mongodb URI to connect to
+ * @param {boolean} [options.waitForConnection=true] If true, startup fails when initial MongoDB connection fails.
  * @param {string} [options.name] Optionally set a connection name. Useful for debugging
  */
 export default fp(async function (fastify, options) {
@@ -52,14 +53,18 @@ export default fp(async function (fastify, options) {
 
     let uri = options;
     let opts = {};
+    let waitForConnection = true;
 
-    if (typeof options === "object") {
+    if (options && typeof options === "object") {
         // Destructure the 'uri' property and collect the rest into a new object 'opts'
-        ({ uri, ...opts } = options);
+        ({ uri, waitForConnection = true, ...opts } = options);
     }
 
     if (!uri || typeof uri !== "string") {
         throw new Error("@ynode/mongoose requires options.uri");
+    }
+    if (typeof waitForConnection !== "boolean") {
+        throw new Error("@ynode/mongoose requires options.waitForConnection to be a boolean");
     }
 
     const connectionLabel = redactMongoUri(uri);
@@ -95,12 +100,25 @@ export default fp(async function (fastify, options) {
     );
 
     fastify.addHook("onReady", async () => {
-        conn.openUri(uri, { ...opts }).catch((error) => {
+        if (!waitForConnection) {
+            conn.openUri(uri, { ...opts }).catch((error) => {
+                fastify.log.error(
+                    { err: error },
+                    `Mongoose initial connection failed [${conn.id}] ${connectionLabel}`,
+                );
+            });
+            return;
+        }
+
+        try {
+            await conn.openUri(uri, { ...opts });
+        } catch (error) {
             fastify.log.error(
                 { err: error },
                 `Mongoose initial connection failed [${conn.id}] ${connectionLabel}`,
             );
-        });
+            throw error;
+        }
     });
 
     fastify.addHook("onClose", async () => {

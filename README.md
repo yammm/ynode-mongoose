@@ -37,7 +37,7 @@ if (fastify.argv.mongoose) {
 
 ## Usage
 
-Register the plugin with your Fastify instance. You MUST provide a `uri` option. Any other options you provide are passed directly to `connection.openUri(uri, options)`.
+Register the plugin with your Fastify instance. You MUST provide a `uri` option. By default, startup waits for MongoDB (`waitForConnection: true`). Any other options you provide are passed directly to `connection.openUri(uri, options)`.
 
 ### Registering the Plugin
 
@@ -52,12 +52,19 @@ const fastify = Fastify({
 // Register the plugin with options
 await fastify.register(fastifyMongoose, {
     uri: "mongodb://localhost:27017/my_database",
+    waitForConnection: true,
     // Options below are passed to connection.openUri(uri, options)
     maxPoolSize: 10
 });
 
 // Or simply with a connection string
 await fastify.register(fastifyMongoose, "mongodb://localhost:27017/my_database");
+
+// For non-blocking startup behavior
+await fastify.register(fastifyMongoose, {
+    uri: "mongodb://localhost:27017/my_database",
+    waitForConnection: false
+});
 ```
 
 ### Using the Connection
@@ -97,13 +104,15 @@ start();
 
 This plugin passes all options directly to `connection.openUri(uri, options)` from the official `mongoose` library.
 
+- `waitForConnection` (boolean, default: `true`): if `true`, `fastify.ready()` fails when initial MongoDB connection fails. If `false`, startup continues and failures are logged.
+
 For a full list of available options, please see the **[official `mongoose` documentation](https://mongoosejs.com/docs/api/connection.html)**.
 
 ## Failure Behavior
 
 - The plugin starts connecting during Fastify `onReady`.
-- Startup is non-blocking: `fastify.ready()` does not fail if MongoDB is temporarily unavailable.
-- Initial connection failures are logged and retried by Mongoose according to your driver configuration.
+- `waitForConnection: true` (default): startup fails if the initial connection attempt fails.
+- `waitForConnection: false`: startup is non-blocking and initial connection failures are logged.
 - Connection lifecycle events (`connected`, `reconnected`, `error`, `close`) are logged.
 - On shutdown, the plugin calls `connection.close()` only when the connection is active.
 
