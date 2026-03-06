@@ -31,6 +31,11 @@ import fp from "fastify-plugin";
 
 import mongoose from "mongoose";
 
+function redactMongoUri(uri) {
+    // Redact credentials between `//` and `@` to avoid leaking secrets in logs.
+    return uri.replace(/\/\/[^@/]+@/u, "//***@");
+}
+
 /**
  * This plugin adds a "mongoose" decorator to the Fastify server instance,
  * allowing for easy access to the mongoose connection.
@@ -57,6 +62,7 @@ export default fp(async function (fastify, options) {
         throw new Error("@ynode/mongoose requires options.uri");
     }
 
+    const connectionLabel = redactMongoUri(uri);
     const conn = mongoose.createConnection();
 
     // sharing is caring
@@ -68,13 +74,13 @@ export default fp(async function (fastify, options) {
     // Initiating a connection to the MongoDB server
     conn.on("connected", async () => {
         // console.dir(conn, { depth: 1, colors: true });
-        fastify.log.info(`Mongoose connection is ready to use [${conn.id}] ${conn._connectionString}`);
+        fastify.log.info(`Mongoose connection is ready to use [${conn.id}] ${connectionLabel}`);
     });
 
     // Connection has been closed (via .disconnect() / .close())
     conn.on("close", () =>
         fastify.log.info(
-            `Mongoose connection to the MongoDB server has been closed [${conn.id}] ${conn._connectionString}`,
+            `Mongoose connection to the MongoDB server has been closed [${conn.id}] ${connectionLabel}`,
         ),
     );
 
@@ -84,12 +90,17 @@ export default fp(async function (fastify, options) {
     // Initiating a connection to the MongoDB server
     conn.on("reconnected", () =>
         fastify.log.warn(
-            `Mongoose reconnected to the MongoDB server [${conn.id}] ${conn._connectionString}`,
+            `Mongoose reconnected to the MongoDB server [${conn.id}] ${connectionLabel}`,
         ),
     );
 
     fastify.addHook("onReady", async () => {
-        await conn.openUri(uri, { ...opts, _fireAndForget: true });
+        conn.openUri(uri, { ...opts }).catch((error) => {
+            fastify.log.error(
+                { err: error },
+                `Mongoose initial connection failed [${conn.id}] ${connectionLabel}`,
+            );
+        });
     });
 
     fastify.addHook("onClose", async () => {
@@ -97,7 +108,7 @@ export default fp(async function (fastify, options) {
         if (conn.readyState === 0 || conn.readyState === 3) {
             return;
         }
-        fastify.log.debug(`Attempting to close our Mongoose connection [${conn.id}] ${conn._connectionString}`);
+        fastify.log.debug(`Attempting to close our Mongoose connection [${conn.id}] ${connectionLabel}`);
         await conn.close();
     });
 }, {

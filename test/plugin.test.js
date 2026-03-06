@@ -15,8 +15,7 @@ describe("@ynode/mongoose", () => {
             openUri: mock.fn(async () => { }),
             close: mock.fn(async () => { }),
             readyState: 0,
-            id: 1,
-            _connectionString: "mongodb://localhost:27017/test"
+            id: 1
         };
 
         mock.method(mongoose, "createConnection", () => mockConn);
@@ -38,8 +37,7 @@ describe("@ynode/mongoose", () => {
             openUri: mock.fn(async () => { }),
             close: mock.fn(async () => { }),
             readyState: 0,
-            id: 2,
-            _connectionString: "mongodb://localhost:27017/test-string"
+            id: 2
         };
 
         mock.method(mongoose, "createConnection", () => mockConn);
@@ -52,6 +50,31 @@ describe("@ynode/mongoose", () => {
 
         const openUriCall = mockConn.openUri.mock.calls[0];
         assert.strictEqual(openUriCall.arguments[0], "mongodb://localhost:27017/test-string");
+        assert.deepStrictEqual(openUriCall.arguments[1], {});
+
+        await fastify.close();
+    });
+
+    test("should not fail ready when openUri rejects", async () => {
+        const fastify = Fastify();
+
+        const mockConn = {
+            on: mock.fn(),
+            openUri: mock.fn(async () => {
+                throw new Error("connect failed");
+            }),
+            close: mock.fn(async () => { }),
+            readyState: 0,
+            id: 3
+        };
+
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, { uri: "mongodb://localhost:27017/test-reject" });
+
+        await assert.doesNotReject(async () => {
+            await fastify.ready();
+        });
 
         await fastify.close();
     });
