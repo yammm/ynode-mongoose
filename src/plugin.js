@@ -1,5 +1,5 @@
 /**
- *  A better mongoodse Fastify plugin
+ *  A better mongoose Fastify plugin
  *
  * @module @ynode/mongoose
  */
