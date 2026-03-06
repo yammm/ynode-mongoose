@@ -109,4 +109,61 @@ describe("@ynode/mongoose", () => {
             assert.strictEqual(err.message, "@ynode/mongoose has already been registered");
         }
     });
+
+    test("should close active connection on fastify close", async () => {
+        const fastify = Fastify();
+        const mockConn = {
+            on: mock.fn(),
+            openUri: mock.fn(async () => { }),
+            close: mock.fn(async () => { }),
+            readyState: 1,
+            id: 4
+        };
+
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, { uri: "mongodb://localhost:27017/test-active-close" });
+        await fastify.ready();
+        await fastify.close();
+
+        assert.strictEqual(mockConn.close.mock.callCount(), 1);
+    });
+
+    test("should not close disconnected connection on fastify close", async () => {
+        const fastify = Fastify();
+        const mockConn = {
+            on: mock.fn(),
+            openUri: mock.fn(async () => { }),
+            close: mock.fn(async () => { }),
+            readyState: 0,
+            id: 5
+        };
+
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, { uri: "mongodb://localhost:27017/test-disconnected-close" });
+        await fastify.ready();
+        await fastify.close();
+
+        assert.strictEqual(mockConn.close.mock.callCount(), 0);
+    });
+
+    test("should not close disconnecting connection on fastify close", async () => {
+        const fastify = Fastify();
+        const mockConn = {
+            on: mock.fn(),
+            openUri: mock.fn(async () => { }),
+            close: mock.fn(async () => { }),
+            readyState: 3,
+            id: 6
+        };
+
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, { uri: "mongodb://localhost:27017/test-disconnecting-close" });
+        await fastify.ready();
+        await fastify.close();
+
+        assert.strictEqual(mockConn.close.mock.callCount(), 0);
+    });
 });

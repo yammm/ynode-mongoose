@@ -37,7 +37,7 @@ if (fastify.argv.mongoose) {
 
 ## Usage
 
-Register the plugin with your Fastify instance. You MUST provide a `uri` option. Any other options you provide are passed directly to the underlying `mongoose.createConnection` method.
+Register the plugin with your Fastify instance. You MUST provide a `uri` option. Any other options you provide are passed directly to `connection.openUri(uri, options)`.
 
 ### Registering the Plugin
 
@@ -52,7 +52,7 @@ const fastify = Fastify({
 // Register the plugin with options
 await fastify.register(fastifyMongoose, {
     uri: "mongodb://localhost:27017/my_database",
-    // Options below are passed to mongoose.createConnection
+    // Options below are passed to connection.openUri(uri, options)
     maxPoolSize: 10
 });
 
@@ -72,7 +72,7 @@ const UserSchema = new fastify.mongoose.base.Schema({
 });
 
 // Create a model attached to this connection
-// Note: We use fastify.mongoose.model, NOT logging mongoose.model global
+// Note: We use fastify.mongoose.model, NOT the global mongoose.model
 const User = fastify.mongoose.model('User', UserSchema);
 
 // Route example
@@ -95,9 +95,17 @@ start();
 
 ## Options
 
-This plugin passes all options directly to the `createConnection` function from the official `mongoose` library.
+This plugin passes all options directly to `connection.openUri(uri, options)` from the official `mongoose` library.
 
 For a full list of available options, please see the **[official `mongoose` documentation](https://mongoosejs.com/docs/api/connection.html)**.
+
+## Failure Behavior
+
+- The plugin starts connecting during Fastify `onReady`.
+- Startup is non-blocking: `fastify.ready()` does not fail if MongoDB is temporarily unavailable.
+- Initial connection failures are logged and retried by Mongoose according to your driver configuration.
+- Connection lifecycle events (`connected`, `reconnected`, `error`, `close`) are logged.
+- On shutdown, the plugin calls `connection.close()` only when the connection is active.
 
 ## Release
 

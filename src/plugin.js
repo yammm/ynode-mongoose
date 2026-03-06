@@ -41,7 +41,7 @@ function redactMongoUri(uri) {
  * allowing for easy access to the mongoose connection.
  *
  * @param {FastifyInstance} fastify The Fastify instance.
- * @param {object} options Plugin options, directly passed to mongoose.createConnection.
+ * @param {object} options Plugin options, directly passed to connection.openUri.
  * @param {String} options.uri mongodb URI to connect to
  * @param {string} [options.name] Optionally set a connection name. Useful for debugging
  */
