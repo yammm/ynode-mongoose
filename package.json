@@ -61,10 +61,10 @@
         "LICENSE"
     ],
     "dependencies": {
-        "fastify-plugin": "^5.1.0",
-        "mongoose": "^9.1.5"
+        "fastify-plugin": "^5.1.0"
     },
     "peerDependencies": {
+        "fastify": "5.x",
         "mongoose": "^9.1.5"
     }
 }
