@@ -2,16 +2,13 @@
 
 Copyright (c) 2026 Michael Welter <me@mikinho.com>
 
-[![npm version](https://img.shields.io/npm/v/@ynode/mongoose.svg)](https://www.npmjs.com/package/@ynode/mongoose)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![npm version](https://img.shields.io/npm/v/@ynode/mongoose.svg)](https://www.npmjs.com/package/@ynode/mongoose) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A better [Mongoose](https://mongoosejs.com/) [Fastify](https://www.fastify.io/) plugin for connection sharing and useful
-logging
+A better [Mongoose](https://mongoosejs.com/) [Fastify](https://www.fastify.io/) plugin for connection sharing and useful logging
 
 ## Why?
 
-A lightweight **Fastify** plugin that exposes a single **mongoose** client (`mongoose` package) on your Fastify instance
-and handles connection lifecycle (connect → ready → reconnect → close) for you.
+A lightweight **Fastify** plugin that exposes a single **mongoose** client (`mongoose` package) on your Fastify instance and handles connection lifecycle (connect → ready → reconnect → close) for you.
 
 - ✅ Uses the **official** [`mongoose`](https://www.npmjs.com/package/mongoose) client
 - ✅ Clean Fastify integration with proper startup/shutdown hooks
@@ -39,8 +36,7 @@ if (fastify.argv.mongoose) {
 
 ## Usage
 
-Register the plugin with your Fastify instance. You MUST provide a `uri` option. By default, startup waits for MongoDB
-(`waitForConnection: true`). Any other options you provide are passed directly to `connection.openUri(uri, options)`.
+Register the plugin with your Fastify instance. You MUST provide a `uri` option. By default, startup waits for MongoDB (`waitForConnection: true`). Any other options you provide are passed directly to `connection.openUri(uri, options)`.
 
 ### Registering the Plugin
 
@@ -72,8 +68,7 @@ await fastify.register(fastifyMongoose, {
 
 ### Using the Connection
 
-The Mongoose connection is available at `fastify.mongoose`. You should use this connection to create your models to
-ensure they are bound to this specific connection.
+The Mongoose connection is available at `fastify.mongoose`. You should use this connection to create your models to ensure they are bound to this specific connection.
 
 ```javascript
 // Define a schema
@@ -108,11 +103,9 @@ start();
 
 This plugin passes all options directly to `connection.openUri(uri, options)` from the official `mongoose` library.
 
-- `waitForConnection` (boolean, default: `true`): if `true`, `fastify.ready()` fails when initial MongoDB connection
-  fails. If `false`, startup continues and failures are logged.
+- `waitForConnection` (boolean, default: `true`): if `true`, `fastify.ready()` fails when initial MongoDB connection fails. If `false`, startup continues and failures are logged.
 
-For a full list of available options, please see the
-**[official `mongoose` documentation](https://mongoosejs.com/docs/api/connection.html)**.
+For a full list of available options, please see the **[official `mongoose` documentation](https://mongoosejs.com/docs/api/connection.html)**.
 
 ## Failure Behavior
 
