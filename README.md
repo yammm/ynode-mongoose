@@ -122,35 +122,7 @@ For a full list of available options, please see the
 - Connection lifecycle events (`connected`, `reconnected`, `error`, `close`) are logged.
 - On shutdown, the plugin calls `connection.close()` only when the connection is active.
 
-## Release
-
-To release a new version, use the included Makefile.
-
-```sh
-make release VERSION=1.2.3
-```
-
-This command will:
-
-1.  Check that `npm` and `package.json` exist.
-2.  Run `npm version` to update `package.json` and create a git tag.
-3.  Publish the package to npm.
-4.  Push the commit and tags to the git remote.
-
 ## License
 
 This project is licensed under the [MIT License](./LICENSE).
 
-## Release Process
-
-This package uses [`@mikinho/autover`](https://github.com/yammm/ynode-autover) for automated versioning and changelog generation. 
-
-To release a new version seamlessly:
-1. Make your code changes in a branch.
-2. Open a Pull Request against `main`.
-3. Add the **`autover-apply`** label to the Pull Request.
-4. Merge the Pull Request.
-
-Upon merge, the GitHub Action runner will automatically bump the package version, update the `CHANGELOG.md`, create a Git tag, and commit the release directly to `main`.
-
-> **Note:** Direct commits to `main` are supported but will gracefully skip the `autover` pipeline to prevent versioning collisions.
