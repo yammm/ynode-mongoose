@@ -5,11 +5,13 @@ Copyright (c) 2026 Michael Welter <me@mikinho.com>
 [![npm version](https://img.shields.io/npm/v/@ynode/mongoose.svg)](https://www.npmjs.com/package/@ynode/mongoose)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A better [Mongoose](https://mongoosejs.com/) [Fastify](https://www.fastify.io/) plugin for connection sharing and useful logging
+A better [Mongoose](https://mongoosejs.com/) [Fastify](https://www.fastify.io/) plugin for connection sharing and useful
+logging
 
 ## Why?
 
-A lightweight **Fastify** plugin that exposes a single **mongoose** client (`mongoose` package) on your Fastify instance and handles connection lifecycle (connect → ready → reconnect → close) for you.
+A lightweight **Fastify** plugin that exposes a single **mongoose** client (`mongoose` package) on your Fastify instance
+and handles connection lifecycle (connect → ready → reconnect → close) for you.
 
 - ✅ Uses the **official** [`mongoose`](https://www.npmjs.com/package/mongoose) client
 - ✅ Clean Fastify integration with proper startup/shutdown hooks
@@ -37,7 +39,8 @@ if (fastify.argv.mongoose) {
 
 ## Usage
 
-Register the plugin with your Fastify instance. You MUST provide a `uri` option. By default, startup waits for MongoDB (`waitForConnection: true`). Any other options you provide are passed directly to `connection.openUri(uri, options)`.
+Register the plugin with your Fastify instance. You MUST provide a `uri` option. By default, startup waits for MongoDB
+(`waitForConnection: true`). Any other options you provide are passed directly to `connection.openUri(uri, options)`.
 
 ### Registering the Plugin
 
@@ -46,7 +49,7 @@ import Fastify from "fastify";
 import fastifyMongoose from "@ynode/mongoose";
 
 const fastify = Fastify({
-    logger: true
+    logger: true,
 });
 
 // Register the plugin with options
@@ -54,7 +57,7 @@ await fastify.register(fastifyMongoose, {
     uri: "mongodb://localhost:27017/my_database",
     waitForConnection: true,
     // Options below are passed to connection.openUri(uri, options)
-    maxPoolSize: 10
+    maxPoolSize: 10,
 });
 
 // Or simply with a connection string
@@ -63,24 +66,25 @@ await fastify.register(fastifyMongoose, "mongodb://localhost:27017/my_database")
 // For non-blocking startup behavior
 await fastify.register(fastifyMongoose, {
     uri: "mongodb://localhost:27017/my_database",
-    waitForConnection: false
+    waitForConnection: false,
 });
 ```
 
 ### Using the Connection
 
-The Mongoose connection is available at `fastify.mongoose`. You should use this connection to create your models to ensure they are bound to this specific connection.
+The Mongoose connection is available at `fastify.mongoose`. You should use this connection to create your models to
+ensure they are bound to this specific connection.
 
 ```javascript
 // Define a schema
 const UserSchema = new fastify.mongoose.base.Schema({
     name: String,
-    email: String
+    email: String,
 });
 
 // Create a model attached to this connection
 // Note: We use fastify.mongoose.model, NOT the global mongoose.model
-const User = fastify.mongoose.model('User', UserSchema);
+const User = fastify.mongoose.model("User", UserSchema);
 
 // Route example
 fastify.get("/users", async (request, reply) => {
@@ -104,9 +108,11 @@ start();
 
 This plugin passes all options directly to `connection.openUri(uri, options)` from the official `mongoose` library.
 
-- `waitForConnection` (boolean, default: `true`): if `true`, `fastify.ready()` fails when initial MongoDB connection fails. If `false`, startup continues and failures are logged.
+- `waitForConnection` (boolean, default: `true`): if `true`, `fastify.ready()` fails when initial MongoDB connection
+  fails. If `false`, startup continues and failures are logged.
 
-For a full list of available options, please see the **[official `mongoose` documentation](https://mongoosejs.com/docs/api/connection.html)**.
+For a full list of available options, please see the
+**[official `mongoose` documentation](https://mongoosejs.com/docs/api/connection.html)**.
 
 ## Failure Behavior
 
@@ -125,6 +131,7 @@ make release VERSION=1.2.3
 ```
 
 This command will:
+
 1.  Check that `npm` and `package.json` exist.
 2.  Run `npm version` to update `package.json` and create a git tag.
 3.  Publish the package to npm.

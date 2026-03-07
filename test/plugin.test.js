@@ -1,8 +1,9 @@
-
-import { test, describe, mock } from "node:test";
 import assert from "node:assert";
+import { describe, mock,test } from "node:test";
+
 import Fastify from "fastify";
 import mongoose from "mongoose";
+
 import plugin from "../src/plugin.js";
 
 describe("@ynode/mongoose", () => {
@@ -12,10 +13,10 @@ describe("@ynode/mongoose", () => {
         // Mock mongoose.createConnection
         const mockConn = {
             on: mock.fn(),
-            openUri: mock.fn(async () => { }),
-            close: mock.fn(async () => { }),
+            openUri: mock.fn(async () => {}),
+            close: mock.fn(async () => {}),
             readyState: 0,
-            id: 1
+            id: 1,
         };
 
         mock.method(mongoose, "createConnection", () => mockConn);
@@ -34,10 +35,10 @@ describe("@ynode/mongoose", () => {
         // Mock mongoose.createConnection
         const mockConn = {
             on: mock.fn(),
-            openUri: mock.fn(async () => { }),
-            close: mock.fn(async () => { }),
+            openUri: mock.fn(async () => {}),
+            close: mock.fn(async () => {}),
             readyState: 0,
-            id: 2
+            id: 2,
         };
 
         mock.method(mongoose, "createConnection", () => mockConn);
@@ -63,9 +64,9 @@ describe("@ynode/mongoose", () => {
             openUri: mock.fn(async () => {
                 throw new Error("connect failed");
             }),
-            close: mock.fn(async () => { }),
+            close: mock.fn(async () => {}),
             readyState: 0,
-            id: 3
+            id: 3,
         };
 
         mock.method(mongoose, "createConnection", () => mockConn);
@@ -87,16 +88,16 @@ describe("@ynode/mongoose", () => {
             openUri: mock.fn(async () => {
                 throw new Error("connect failed");
             }),
-            close: mock.fn(async () => { }),
+            close: mock.fn(async () => {}),
             readyState: 0,
-            id: 7
+            id: 7,
         };
 
         mock.method(mongoose, "createConnection", () => mockConn);
 
         await fastify.register(plugin, {
             uri: "mongodb://localhost:27017/test-reject-nonblocking",
-            waitForConnection: false
+            waitForConnection: false,
         });
 
         await assert.doesNotReject(async () => {
@@ -132,9 +133,9 @@ describe("@ynode/mongoose", () => {
         const fastify = Fastify();
         const mockConn = {
             on: mock.fn(),
-            openUri: mock.fn(async () => { }),
-            close: mock.fn(async () => { }),
-            readyState: 0
+            openUri: mock.fn(async () => {}),
+            close: mock.fn(async () => {}),
+            readyState: 0,
         };
         mock.method(mongoose, "createConnection", () => mockConn);
 
@@ -152,10 +153,10 @@ describe("@ynode/mongoose", () => {
         const fastify = Fastify();
         const mockConn = {
             on: mock.fn(),
-            openUri: mock.fn(async () => { }),
-            close: mock.fn(async () => { }),
+            openUri: mock.fn(async () => {}),
+            close: mock.fn(async () => {}),
             readyState: 1,
-            id: 4
+            id: 4,
         };
 
         mock.method(mongoose, "createConnection", () => mockConn);
@@ -171,10 +172,10 @@ describe("@ynode/mongoose", () => {
         const fastify = Fastify();
         const mockConn = {
             on: mock.fn(),
-            openUri: mock.fn(async () => { }),
-            close: mock.fn(async () => { }),
+            openUri: mock.fn(async () => {}),
+            close: mock.fn(async () => {}),
             readyState: 0,
-            id: 5
+            id: 5,
         };
 
         mock.method(mongoose, "createConnection", () => mockConn);
@@ -190,10 +191,10 @@ describe("@ynode/mongoose", () => {
         const fastify = Fastify();
         const mockConn = {
             on: mock.fn(),
-            openUri: mock.fn(async () => { }),
-            close: mock.fn(async () => { }),
+            openUri: mock.fn(async () => {}),
+            close: mock.fn(async () => {}),
             readyState: 3,
-            id: 6
+            id: 6,
         };
 
         mock.method(mongoose, "createConnection", () => mockConn);
