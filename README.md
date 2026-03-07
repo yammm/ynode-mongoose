@@ -125,4 +125,3 @@ For a full list of available options, please see the
 ## License
 
 This project is licensed under the [MIT License](./LICENSE).
-
