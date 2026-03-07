@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Home</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Home</h1>
+
+    
+
+
+
+    
+
+
+    <h3> </h3>
+
+
+
+
+
+
+
+
+
+
+    
+
+
+
+
+    <section>
+        <article><h1>@ynode/mongoose</h1>
+<p>Copyright (c) 2026 Michael Welter <a href="mailto:me@mikinho.com">me@mikinho.com</a></p>
+<p><a href="https://www.npmjs.com/package/@ynode/mongoose"><img src="https://img.shields.io/npm/v/@ynode/mongoose.svg" alt="npm version"></a> <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a></p>
+<p>A better <a href="https://mongoosejs.com/">Mongoose</a> <a href="https://www.fastify.io/">Fastify</a> plugin for connection sharing and useful logging</p>
+<h2>Why?</h2>
+<p>A lightweight <strong>Fastify</strong> plugin that exposes a single <strong>mongoose</strong> client (<code>mongoose</code> package) on your Fastify instance and handles connection lifecycle (connect → ready → reconnect → close) for you.</p>
+<ul>
+<li>✅ Uses the <strong>official</strong> <a href="https://www.npmjs.com/package/mongoose"><code>mongoose</code></a> client</li>
+<li>✅ Clean Fastify integration with proper startup/shutdown hooks</li>
+<li>✅ Simple API: <code>fastify.mongoose</code> everywhere in your app</li>
+</ul>
+<h2>Installation</h2>
+<p>Install the package and its required peer dependency, <code>mongoose</code>.</p>
+<pre class="prettyprint source lang-sh"><code>npm install @ynode/mongoose mongoose
+
+</code></pre>
+<h2>Basic Usage</h2>
+<pre class="prettyprint source lang-javascript"><code>import mongoose from &quot;@ynode/mongoose&quot;;
+
+if (fastify.argv.mongoose) {
+    // connect to mongoose
+    await fastify.register(mongoose, { uri: fastify.argv.mongoose });
+}
+</code></pre>
+<h2>Usage</h2>
+<p>Register the plugin with your Fastify instance. You MUST provide a <code>uri</code> option. By default, startup waits for MongoDB (<code>waitForConnection: true</code>). Any other options you provide are passed directly to <code>connection.openUri(uri, options)</code>.</p>
+<h3>Registering the Plugin</h3>
+<pre class="prettyprint source lang-javascript"><code>import Fastify from &quot;fastify&quot;;
+import fastifyMongoose from &quot;@ynode/mongoose&quot;;
+
+const fastify = Fastify({
+    logger: true,
+});
+
+// Register the plugin with options
+await fastify.register(fastifyMongoose, {
+    uri: &quot;mongodb://localhost:27017/my_database&quot;,
+    waitForConnection: true,
+    // Options below are passed to connection.openUri(uri, options)
+    maxPoolSize: 10,
+});
+
+// Or simply with a connection string
+await fastify.register(fastifyMongoose, &quot;mongodb://localhost:27017/my_database&quot;);
+
+// For non-blocking startup behavior
+await fastify.register(fastifyMongoose, {
+    uri: &quot;mongodb://localhost:27017/my_database&quot;,
+    waitForConnection: false,
+});
+</code></pre>
+<h3>Using the Connection</h3>
+<p>The Mongoose connection is available at <code>fastify.mongoose</code>. You should use this connection to create your models to ensure they are bound to this specific connection.</p>
+<pre class="prettyprint source lang-javascript"><code>// Define a schema
+const UserSchema = new fastify.mongoose.base.Schema({
+    name: String,
+    email: String,
+});
+
+// Create a model attached to this connection
+// Note: We use fastify.mongoose.model, NOT the global mongoose.model
+const User = fastify.mongoose.model(&quot;User&quot;, UserSchema);
+
+// Route example
+fastify.get(&quot;/users&quot;, async (request, reply) => {
+    const users = await User.find();
+    return users;
+});
+
+const start = async () => {
+    try {
+        await fastify.listen({ port: 3000 });
+    } catch (err) {
+        fastify.log.error(err);
+        process.exit(1);
+    }
+};
+
+start();
+</code></pre>
+<h2>Options</h2>
+<p>This plugin passes all options directly to <code>connection.openUri(uri, options)</code> from the official <code>mongoose</code> library.</p>
+<ul>
+<li><code>waitForConnection</code> (boolean, default: <code>true</code>): if <code>true</code>, <code>fastify.ready()</code> fails when initial MongoDB connection fails. If <code>false</code>, startup continues and failures are logged.</li>
+</ul>
+<p>For a full list of available options, please see the <strong><a href="https://mongoosejs.com/docs/api/connection.html">official <code>mongoose</code> documentation</a></strong>.</p>
+<h2>Failure Behavior</h2>
+<ul>
+<li>The plugin starts connecting during Fastify <code>onReady</code>.</li>
+<li><code>waitForConnection: true</code> (default): startup fails if the initial connection attempt fails.</li>
+<li><code>waitForConnection: false</code>: startup is non-blocking and initial connection failures are logged.</li>
+<li>Connection lifecycle events (<code>connected</code>, <code>reconnected</code>, <code>error</code>, <code>close</code>) are logged.</li>
+<li>On shutdown, the plugin calls <code>connection.close()</code> only when the connection is active.</li>
+</ul>
+<h2>License</h2>
+<p>This project is licensed under the <a href="./LICENSE">MIT License</a>.</p></article>
+    </section>
+
+
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-@ynode_mongoose.html">@ynode/mongoose</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a>
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
