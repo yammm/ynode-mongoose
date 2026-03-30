@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { describe, mock,test } from "node:test";
+import { describe, mock, test } from "node:test";
 
 import Fastify from "fastify";
 import mongoose from "mongoose";
@@ -24,7 +24,11 @@ describe("@ynode/mongoose", () => {
         await fastify.register(plugin, { uri: "mongodb://localhost:27017/test" });
 
         assert.ok(fastify.mongoose, "mongoose decorator should exist");
-        assert.strictEqual(fastify.mongoose, mockConn, "mongoose decorator should be the connection object");
+        assert.strictEqual(
+            fastify.mongoose,
+            mockConn,
+            "mongoose decorator should be the connection object",
+        );
 
         await fastify.close();
     });
@@ -47,7 +51,11 @@ describe("@ynode/mongoose", () => {
         await fastify.ready();
 
         assert.ok(fastify.mongoose, "mongoose decorator should exist");
-        assert.strictEqual(fastify.mongoose, mockConn, "mongoose decorator should be the connection object");
+        assert.strictEqual(
+            fastify.mongoose,
+            mockConn,
+            "mongoose decorator should be the connection object",
+        );
 
         const openUriCall = mockConn.openUri.mock.calls[0];
         assert.strictEqual(openUriCall.arguments[0], "mongodb://localhost:27017/test-string");
@@ -122,10 +130,16 @@ describe("@ynode/mongoose", () => {
         const fastify = Fastify();
 
         try {
-            await fastify.register(plugin, { uri: "mongodb://localhost:27017/test", waitForConnection: "false" });
+            await fastify.register(plugin, {
+                uri: "mongodb://localhost:27017/test",
+                waitForConnection: "false",
+            });
             assert.fail("Should have thrown error");
         } catch (err) {
-            assert.strictEqual(err.message, "@ynode/mongoose requires options.waitForConnection to be a boolean");
+            assert.strictEqual(
+                err.message,
+                "@ynode/mongoose requires options.waitForConnection to be a boolean",
+            );
         }
     });
 
@@ -180,7 +194,9 @@ describe("@ynode/mongoose", () => {
 
         mock.method(mongoose, "createConnection", () => mockConn);
 
-        await fastify.register(plugin, { uri: "mongodb://localhost:27017/test-disconnected-close" });
+        await fastify.register(plugin, {
+            uri: "mongodb://localhost:27017/test-disconnected-close",
+        });
         await fastify.ready();
         await fastify.close();
 
@@ -199,7 +215,9 @@ describe("@ynode/mongoose", () => {
 
         mock.method(mongoose, "createConnection", () => mockConn);
 
-        await fastify.register(plugin, { uri: "mongodb://localhost:27017/test-disconnecting-close" });
+        await fastify.register(plugin, {
+            uri: "mongodb://localhost:27017/test-disconnecting-close",
+        });
         await fastify.ready();
         await fastify.close();
 

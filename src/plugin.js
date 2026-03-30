@@ -30,8 +30,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 import fp from "fastify-plugin";
 import mongoose from "mongoose";
 
+/**
+ * Redacts credentials from a MongoDB connection URI to prevent secret leakage in logs.
+ * Replaces the user:password segment between `//` and `@` with `***`.
+ * @param {string} uri - MongoDB connection URI.
+ * @returns {string} URI with credentials replaced by `***`.
+ */
 function redactMongoUri(uri) {
-    // Redact credentials between `//` and `@` to avoid leaking secrets in logs.
     return uri.replace(/\/\/[^@/]+@/u, "//***@");
 }
 
@@ -41,7 +46,7 @@ function redactMongoUri(uri) {
  *
  * @param {FastifyInstance} fastify The Fastify instance.
  * @param {object} options Plugin options, directly passed to connection.openUri.
- * @param {String} options.uri mongodb URI to connect to
+ * @param {string} options.uri mongodb URI to connect to
  * @param {boolean} [options.waitForConnection=true] If true, startup fails when initial MongoDB connection fails.
  * @param {string} [options.name] Optionally set a connection name. Useful for debugging
  */
@@ -78,29 +83,40 @@ export default fp(
         // Initiating a connection to the MongoDB server
         conn.on("connecting", () => log.debug(`Initiating a connection to the MongoDB server`));
 
-        // Initiating a connection to the MongoDB server
-        conn.on("connected", async () => {
-            // console.dir(conn, { depth: 1, colors: true });
+        // Connection established successfully
+        conn.on("connected", () => {
             log.info(`Mongoose connection is ready to use [${conn.id}] ${connectionLabel}`);
         });
 
         // Connection has been closed (via .disconnect() / .close())
         conn.on("close", () =>
-            log.info(`Mongoose connection to the MongoDB server has been closed [${conn.id}] ${connectionLabel}`),
+            log.info(
+                `Mongoose connection to the MongoDB server has been closed [${conn.id}] ${connectionLabel}`,
+            ),
         );
 
         // Always ensure there is a listener for errors in the client to prevent process crashes due to unhandled errors
-        conn.on("error", (error) => log.error(`Mongoose connection error has occurred:`, error));
+        conn.on("error", (error) =>
+            log.error(
+                { err: error },
+                `Mongoose connection error has occurred [${conn.id}] ${connectionLabel}`,
+            ),
+        );
 
-        // Initiating a connection to the MongoDB server
+        // Driver successfully reconnected after a transient failure
         conn.on("reconnected", () =>
             log.warn(`Mongoose reconnected to the MongoDB server [${conn.id}] ${connectionLabel}`),
         );
 
         fastify.addHook("onReady", async () => {
             if (!waitForConnection) {
+                // Intentional fire-and-forget: connect in the background so server
+                // starts immediately. Failures are logged but do not block startup.
                 conn.openUri(uri, { ...opts }).catch((error) => {
-                    log.error({ err: error }, `Mongoose initial connection failed [${conn.id}] ${connectionLabel}`);
+                    log.error(
+                        { err: error },
+                        `Mongoose initial connection failed [${conn.id}] ${connectionLabel}`,
+                    );
                 });
                 return;
             }
@@ -108,18 +124,30 @@ export default fp(
             try {
                 await conn.openUri(uri, { ...opts });
             } catch (error) {
-                log.error({ err: error }, `Mongoose initial connection failed [${conn.id}] ${connectionLabel}`);
+                log.error(
+                    { err: error },
+                    `Mongoose initial connection failed [${conn.id}] ${connectionLabel}`,
+                );
                 throw error;
             }
         });
 
         fastify.addHook("onClose", async () => {
-            // Check if the connection readyState is not 'disconnected' (0) or 'disconnecting' (3)
+            // readyState can transition between check and close(); guard with try-catch
             if (conn.readyState === 0 || conn.readyState === 3) {
                 return;
             }
-            log.debug(`Attempting to close our Mongoose connection [${conn.id}] ${connectionLabel}`);
-            await conn.close();
+            log.debug(
+                `Attempting to close our Mongoose connection [${conn.id}] ${connectionLabel}`,
+            );
+            try {
+                await conn.close();
+            } catch (error) {
+                log.warn(
+                    { err: error },
+                    `Error closing Mongoose connection [${conn.id}] ${connectionLabel}`,
+                );
+            }
         });
     },
     {
