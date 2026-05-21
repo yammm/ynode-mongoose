@@ -31,27 +31,69 @@ import fp from "fastify-plugin";
 import mongoose from "mongoose";
 
 /**
- * Redacts credentials from a MongoDB connection URI to prevent secret leakage in logs.
- * Replaces the user:password segment between `//` and `@` with `***`.
+ * Query-string parameter names whose values may carry credentials and must
+ * be redacted before logging. Matched case-insensitively.
+ */
+const SENSITIVE_QUERY_PARAMS = new Set([
+    "password",
+    "secret",
+    "token",
+    "apikey",
+    "api_key",
+    "tlscertificatekeyfilepassword",
+]);
+
+/**
+ * Redacts credentials from a MongoDB connection URI to prevent secret leakage
+ * in logs. Sanitizes both the userinfo segment (`mongodb://user:pass@host`)
+ * and any sensitive query-string parameters (e.g. `?password=`). Falls back
+ * to a coarse regex redaction of `//user:pass@` if the URI fails to parse,
+ * so a malformed URI is never logged in raw form.
  * @param {string} uri - MongoDB connection URI.
  * @returns {string} URI with credentials replaced by `***`.
  */
-function redactMongoUri(uri) {
-    return uri.replace(/\/\/[^@/]+@/u, "//***@");
+export function redactMongoUri(uri) {
+    try {
+        const u = new URL(uri);
+        if (u.username) {
+            u.username = "***";
+        }
+        if (u.password) {
+            u.password = "***";
+        }
+        const sensitiveKeys = [];
+        for (const key of u.searchParams.keys()) {
+            if (SENSITIVE_QUERY_PARAMS.has(key.toLowerCase())) {
+                sensitiveKeys.push(key);
+            }
+        }
+        for (const key of sensitiveKeys) {
+            u.searchParams.set(key, "***");
+        }
+        return u.toString();
+    } catch {
+        return uri.replace(/\/\/[^@/]+@/u, "//***@");
+    }
 }
 
 /**
  * This plugin adds a "mongoose" decorator to the Fastify server instance,
- * allowing for easy access to the mongoose connection.
+ * allowing for easy access to the Mongoose connection. The plugin also
+ * accepts a plain string in place of the options object as a shortcut for
+ * `{ uri }`.
  *
- * @param {FastifyInstance} fastify The Fastify instance.
- * @param {object} options Plugin options, directly passed to connection.openUri.
- * @param {string} options.uri mongodb URI to connect to
- * @param {boolean} [options.waitForConnection=true] If true, startup fails when initial MongoDB connection fails.
- * @param {string} [options.name] Optionally set a connection name. Useful for debugging
+ * @param {FastifyInstance} fastify - The Fastify instance.
+ * @param {object|string} options - Plugin options, or the URI string directly.
+ *   All keys other than `uri` and `waitForConnection` are forwarded to
+ *   `connection.openUri()` as Mongoose connection options.
+ * @param {string} options.uri - MongoDB connection URI.
+ * @param {boolean} [options.waitForConnection=true] - If true, startup fails
+ *   when the initial MongoDB connection fails. If false, the connection is
+ *   attempted in the background and errors are logged but do not block boot.
+ * @returns {Promise<void>}
  */
 export default fp(
-    async function (fastify, options) {
+    async function mongoosePlugin(fastify, options) {
         if (fastify.mongoose) {
             throw new Error("@ynode/mongoose has already been registered");
         }
