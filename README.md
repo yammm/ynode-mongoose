@@ -16,27 +16,15 @@ A lightweight **Fastify** plugin that exposes a single **mongoose** client (`mon
 
 ## Installation
 
-Install the package and its required peer dependency, `mongoose`.
+Requires Node.js 20.19.0 or newer, Fastify 5, and Mongoose 9. Install the package and its Mongoose peer dependency:
 
 ```sh
 npm install @ynode/mongoose mongoose
-
-```
-
-## Basic Usage
-
-```javascript
-import mongoose from "@ynode/mongoose";
-
-if (fastify.argv.mongoose) {
-    // connect to mongoose
-    await fastify.register(mongoose, { uri: fastify.argv.mongoose });
-}
 ```
 
 ## Usage
 
-Register the plugin with your Fastify instance. You MUST provide a `uri` option. By default, startup waits for MongoDB (`waitForConnection: true`). Any other options you provide are passed directly to `connection.openUri(uri, options)`.
+Register the plugin with your Fastify instance. You MUST provide a `uri` option. By default, startup waits for MongoDB (`waitForConnection: true`). Options other than `uri` and `waitForConnection` are passed to `connection.openUri(uri, options)`.
 
 ### Registering the Plugin
 
@@ -56,7 +44,8 @@ await fastify.register(fastifyMongoose, {
     maxPoolSize: 10,
 });
 
-// Or simply with a connection string
+// JavaScript also supports a runtime-only connection-string shortcut.
+// TypeScript callers should use the object form above.
 await fastify.register(fastifyMongoose, "mongodb://localhost:27017/my_database");
 
 // For non-blocking startup behavior
@@ -101,9 +90,9 @@ start();
 
 ## Options
 
-This plugin passes all options directly to `connection.openUri(uri, options)` from the official `mongoose` library.
+This plugin forwards options other than `uri` and `waitForConnection` to `connection.openUri(uri, options)` from the official `mongoose` library.
 
-- `waitForConnection` (boolean, default: `true`): if `true`, `fastify.ready()` fails when initial MongoDB connection fails. If `false`, startup continues and failures are logged.
+- `waitForConnection` (boolean, default: `true`): if `true`, `fastify.ready()` fails when initial MongoDB connection fails. If `false`, startup continues while one initial connection attempt runs in the background. The plugin does not retry a failed initial attempt; Mongoose reconnects automatically only after an initial connection succeeds.
 
 For a full list of available options, please see the **[official `mongoose` documentation](https://mongoosejs.com/docs/api/connection.html)**.
 
@@ -111,9 +100,11 @@ For a full list of available options, please see the **[official `mongoose` docu
 
 - The plugin starts connecting during Fastify `onReady`.
 - `waitForConnection: true` (default): startup fails if the initial connection attempt fails.
-- `waitForConnection: false`: startup is non-blocking and initial connection failures are logged.
-- Connection lifecycle events (`connected`, `reconnected`, `error`, `close`) are logged.
-- On shutdown, the plugin calls `connection.close()` only when the connection is active.
+- `waitForConnection: false`: startup is non-blocking and one failed initial attempt is logged without retrying.
+- Connection lifecycle events (`connected`, `disconnected`, `reconnected`, `error`, `close`) are logged. Intentional shutdown disconnects are not warned as outages.
+- On shutdown, the plugin awaits `connection.close()`. Mongoose safely joins connections that are still connecting or already disconnecting.
+
+For readiness checks, inspect `fastify.mongoose.readyState` (`1` means connected). The plugin does not register a health route or perform database pings.
 
 ## License
 

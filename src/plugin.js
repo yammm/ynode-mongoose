@@ -28,6 +28,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 import fp from "fastify-plugin";
+import { redactConnectionString } from "mongodb-connection-string-url";
 import mongoose from "mongoose";
 
 /**
@@ -40,40 +41,51 @@ const SENSITIVE_QUERY_PARAMS = new Set([
     "token",
     "apikey",
     "api_key",
+    "authmechanismproperties",
+    "proxypassword",
+    "proxyusername",
     "tlscertificatekeyfilepassword",
 ]);
 
 /**
+ * Redacts generic credential-like query parameters after the MongoDB driver's
+ * own connection-string redactor has handled driver-specific credentials.
+ * @param {string} uri - Partially redacted MongoDB connection URI.
+ * @returns {string} URI with generic sensitive query values redacted.
+ */
+function redactSensitiveQueryParams(uri) {
+    const queryIndex = uri.indexOf("?");
+    if (queryIndex === -1) {
+        return uri;
+    }
+
+    const fragmentIndex = uri.indexOf("#", queryIndex);
+    const queryEnd = fragmentIndex === -1 ? uri.length : fragmentIndex;
+    const params = new URLSearchParams(uri.slice(queryIndex + 1, queryEnd));
+    const sensitiveKeys = [];
+    for (const key of params.keys()) {
+        if (SENSITIVE_QUERY_PARAMS.has(key.toLowerCase())) {
+            sensitiveKeys.push(key);
+        }
+    }
+    for (const key of sensitiveKeys) {
+        params.set(key, "***");
+    }
+
+    return `${uri.slice(0, queryIndex + 1)}${params}${uri.slice(queryEnd)}`;
+}
+
+/**
  * Redacts credentials from a MongoDB connection URI to prevent secret leakage
- * in logs. Sanitizes both the userinfo segment (`mongodb://user:pass@host`)
- * and any sensitive query-string parameters (e.g. `?password=`). Falls back
- * to a coarse regex redaction of `//user:pass@` if the URI fails to parse,
- * so a malformed URI is never logged in raw form.
+ * in logs. Uses the MongoDB driver's connection-string redactor for userinfo
+ * and driver-specific credentials, then redacts generic sensitive query
+ * parameters such as `password`, `secret`, and `token`.
  * @param {string} uri - MongoDB connection URI.
  * @returns {string} URI with credentials replaced by `***`.
  */
 export function redactMongoUri(uri) {
-    try {
-        const u = new URL(uri);
-        if (u.username) {
-            u.username = "***";
-        }
-        if (u.password) {
-            u.password = "***";
-        }
-        const sensitiveKeys = [];
-        for (const key of u.searchParams.keys()) {
-            if (SENSITIVE_QUERY_PARAMS.has(key.toLowerCase())) {
-                sensitiveKeys.push(key);
-            }
-        }
-        for (const key of sensitiveKeys) {
-            u.searchParams.set(key, "***");
-        }
-        return u.toString();
-    } catch {
-        return uri.replace(/\/\/[^@/]+@/u, "//***@");
-    }
+    const driverRedacted = redactConnectionString(uri, { replacementString: "***" });
+    return redactSensitiveQueryParams(driverRedacted);
 }
 
 /**
@@ -88,13 +100,13 @@ export function redactMongoUri(uri) {
  *   `connection.openUri()` as Mongoose connection options.
  * @param {string} options.uri - MongoDB connection URI.
  * @param {boolean} [options.waitForConnection=true] - If true, startup fails
- *   when the initial MongoDB connection fails. If false, the connection is
- *   attempted in the background and errors are logged but do not block boot.
+ *   when the initial MongoDB connection fails. If false, one connection
+ *   attempt runs in the background and errors are logged but do not block boot.
  * @returns {Promise<void>}
  */
 export default fp(
     async function mongoosePlugin(fastify, options) {
-        if (fastify.mongoose) {
+        if (fastify.hasDecorator("mongoose")) {
             throw new Error("@ynode/mongoose has already been registered");
         }
 
@@ -118,16 +130,37 @@ export default fp(
 
         const connectionLabel = redactMongoUri(uri);
         const conn = mongoose.createConnection();
+        let intentionalDisconnect = false;
 
         // sharing is caring
         fastify.decorate("mongoose", conn);
 
         // Initiating a connection to the MongoDB server
-        conn.on("connecting", () => log.debug(`Initiating a connection to the MongoDB server`));
+        conn.on("connecting", () => {
+            intentionalDisconnect = false;
+            log.debug(
+                `Initiating a connection to the MongoDB server [${conn.id}] ${connectionLabel}`,
+            );
+        });
 
         // Connection established successfully
         conn.on("connected", () => {
+            intentionalDisconnect = false;
             log.info(`Mongoose connection is ready to use [${conn.id}] ${connectionLabel}`);
+        });
+
+        // Track explicit close/disconnect calls so they do not look like outages.
+        conn.on("disconnecting", () => {
+            intentionalDisconnect = true;
+        });
+
+        // Topology loss does not necessarily emit an error event.
+        conn.on("disconnected", () => {
+            if (!intentionalDisconnect) {
+                log.warn(
+                    `Mongoose disconnected from the MongoDB server [${conn.id}] ${connectionLabel}`,
+                );
+            }
         });
 
         // Connection has been closed (via .disconnect() / .close())
@@ -138,23 +171,31 @@ export default fp(
         );
 
         // Always ensure there is a listener for errors in the client to prevent process crashes due to unhandled errors
-        conn.on("error", (error) =>
+        conn.on("error", (error) => {
+            if (intentionalDisconnect) {
+                return;
+            }
             log.error(
                 { err: error },
                 `Mongoose connection error has occurred [${conn.id}] ${connectionLabel}`,
-            ),
-        );
+            );
+        });
 
         // Driver successfully reconnected after a transient failure
-        conn.on("reconnected", () =>
-            log.warn(`Mongoose reconnected to the MongoDB server [${conn.id}] ${connectionLabel}`),
-        );
+        conn.on("reconnected", () => {
+            intentionalDisconnect = false;
+            log.warn(`Mongoose reconnected to the MongoDB server [${conn.id}] ${connectionLabel}`);
+        });
 
         fastify.addHook("onReady", async () => {
             if (!waitForConnection) {
                 // Intentional fire-and-forget: connect in the background so server
-                // starts immediately. Failures are logged but do not block startup.
+                // starts immediately. This is a single attempt; Mongoose only
+                // auto-reconnects after an initial connection succeeds.
                 conn.openUri(uri, { ...opts }).catch((error) => {
+                    if (intentionalDisconnect) {
+                        return;
+                    }
                     log.error(
                         { err: error },
                         `Mongoose initial connection failed [${conn.id}] ${connectionLabel}`,
@@ -175,10 +216,7 @@ export default fp(
         });
 
         fastify.addHook("onClose", async () => {
-            // readyState can transition between check and close(); guard with try-catch
-            if (conn.readyState === 0 || conn.readyState === 3) {
-                return;
-            }
+            intentionalDisconnect = true;
             log.debug(
                 `Attempting to close our Mongoose connection [${conn.id}] ${connectionLabel}`,
             );

@@ -1,10 +1,37 @@
 import assert from "node:assert";
-import { describe, mock, test } from "node:test";
+import { afterEach, describe, mock, test } from "node:test";
 
 import Fastify from "fastify";
 import mongoose from "mongoose";
 
 import plugin, { redactMongoUri } from "../src/plugin.js";
+
+afterEach(() => mock.restoreAll());
+
+function makeMockConnection({ id = 1, readyState = 0, openUri, close } = {}) {
+    return {
+        on: mock.fn(),
+        openUri: mock.fn(openUri ?? (async () => {})),
+        close: mock.fn(close ?? (async () => {})),
+        readyState,
+        id,
+    };
+}
+
+function getConnectionListener(conn, event) {
+    return conn.on.mock.calls.find((call) => call.arguments[0] === event)?.arguments[1];
+}
+
+function capturePluginLog(fastify) {
+    const log = {
+        debug: mock.fn(),
+        error: mock.fn(),
+        info: mock.fn(),
+        warn: mock.fn(),
+    };
+    mock.method(fastify.log, "child", () => log);
+    return log;
+}
 
 describe("@ynode/mongoose", () => {
     test("should register the plugin", async () => {
@@ -64,6 +91,28 @@ describe("@ynode/mongoose", () => {
         await fastify.close();
     });
 
+    test("should forward object connection options to openUri", async () => {
+        const fastify = Fastify();
+        const mockConn = makeMockConnection({ id: 8 });
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, {
+            uri: "mongodb://localhost:27017/test-options",
+            maxPoolSize: 12,
+            serverSelectionTimeoutMS: 2500,
+        });
+        await fastify.ready();
+
+        const openUriCall = mockConn.openUri.mock.calls[0];
+        assert.strictEqual(openUriCall.arguments[0], "mongodb://localhost:27017/test-options");
+        assert.deepStrictEqual(openUriCall.arguments[1], {
+            maxPoolSize: 12,
+            serverSelectionTimeoutMS: 2500,
+        });
+
+        await fastify.close();
+    });
+
     test("should fail ready when openUri rejects by default", async () => {
         const fastify = Fastify();
 
@@ -111,6 +160,8 @@ describe("@ynode/mongoose", () => {
         await assert.doesNotReject(async () => {
             await fastify.ready();
         });
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.strictEqual(mockConn.openUri.mock.callCount(), 1);
 
         await fastify.close();
     });
@@ -182,7 +233,7 @@ describe("@ynode/mongoose", () => {
         assert.strictEqual(mockConn.close.mock.callCount(), 1);
     });
 
-    test("should not close disconnected connection on fastify close", async () => {
+    test("should close disconnected connection on fastify close", async () => {
         const fastify = Fastify();
         const mockConn = {
             on: mock.fn(),
@@ -200,18 +251,20 @@ describe("@ynode/mongoose", () => {
         await fastify.ready();
         await fastify.close();
 
-        assert.strictEqual(mockConn.close.mock.callCount(), 0);
+        assert.strictEqual(mockConn.close.mock.callCount(), 1);
     });
 
-    test("should not close disconnecting connection on fastify close", async () => {
+    test("should await an already-disconnecting connection on fastify close", async () => {
         const fastify = Fastify();
-        const mockConn = {
-            on: mock.fn(),
-            openUri: mock.fn(async () => {}),
-            close: mock.fn(async () => {}),
-            readyState: 3,
+        let finishClose = null;
+        const closeGate = new Promise((resolve) => {
+            finishClose = resolve;
+        });
+        const mockConn = makeMockConnection({
             id: 6,
-        };
+            readyState: 3,
+            close: () => closeGate,
+        });
 
         mock.method(mongoose, "createConnection", () => mockConn);
 
@@ -219,16 +272,124 @@ describe("@ynode/mongoose", () => {
             uri: "mongodb://localhost:27017/test-disconnecting-close",
         });
         await fastify.ready();
+        let fastifyClosed = false;
+        const closePromise = fastify.close().then(() => {
+            fastifyClosed = true;
+        });
+        await new Promise((resolve) => setImmediate(resolve));
+
+        assert.strictEqual(mockConn.close.mock.callCount(), 1);
+        assert.strictEqual(fastifyClosed, false);
+
+        finishClose();
+        await closePromise;
+        assert.strictEqual(fastifyClosed, true);
+    });
+
+    test("should close a still-connecting connection on fastify close", async () => {
+        const fastify = Fastify();
+        const mockConn = makeMockConnection({ id: 9, readyState: 2 });
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, {
+            uri: "mongodb://localhost:27017/test-connecting-close",
+        });
+        await fastify.ready();
         await fastify.close();
 
-        assert.strictEqual(mockConn.close.mock.callCount(), 0);
+        assert.strictEqual(mockConn.close.mock.callCount(), 1);
+    });
+
+    test("should log and absorb connection close failures", async () => {
+        const fastify = Fastify();
+        const closeError = new Error("close failed");
+        const mockConn = makeMockConnection({
+            id: 10,
+            readyState: 1,
+            close: async () => {
+                throw closeError;
+            },
+        });
+        const log = capturePluginLog(fastify);
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, { uri: "mongodb://localhost:27017/test-close-error" });
+        await fastify.ready();
+
+        await assert.doesNotReject(() => fastify.close());
+        assert.strictEqual(log.warn.mock.callCount(), 1);
+        assert.deepStrictEqual(log.warn.mock.calls[0].arguments[0], { err: closeError });
+    });
+
+    test("should warn on unexpected disconnects but not intentional disconnects", async () => {
+        const fastify = Fastify();
+        const mockConn = makeMockConnection({ id: 11 });
+        const log = capturePluginLog(fastify);
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, { uri: "mongodb://localhost:27017/test-events" });
+
+        const connecting = getConnectionListener(mockConn, "connecting");
+        const disconnecting = getConnectionListener(mockConn, "disconnecting");
+        const disconnected = getConnectionListener(mockConn, "disconnected");
+        assert.strictEqual(typeof connecting, "function");
+        assert.strictEqual(typeof disconnecting, "function");
+        assert.strictEqual(typeof disconnected, "function");
+
+        disconnected();
+        assert.strictEqual(log.warn.mock.callCount(), 1);
+        assert.match(log.warn.mock.calls[0].arguments[0], /disconnected/);
+
+        disconnecting();
+        disconnected();
+        assert.strictEqual(log.warn.mock.callCount(), 1);
+
+        connecting();
+        disconnected();
+        assert.strictEqual(log.warn.mock.callCount(), 2);
+
+        await fastify.close();
+    });
+
+    test("should suppress pending connection errors during intentional shutdown", async () => {
+        const fastify = Fastify();
+        const connectionError = new Error("connect failed during shutdown");
+        let rejectOpenUri;
+        const openUriPending = new Promise((resolve, reject) => {
+            rejectOpenUri = reject;
+        });
+        const mockConn = makeMockConnection({
+            id: 12,
+            openUri: () => openUriPending,
+            close: async () => {
+                emitConnectionError(connectionError);
+                rejectOpenUri(connectionError);
+                await new Promise((resolve) => setImmediate(resolve));
+            },
+        });
+        const log = capturePluginLog(fastify);
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, {
+            uri: "mongodb://localhost:27017/test-shutdown-error",
+            waitForConnection: false,
+        });
+        await fastify.ready();
+
+        const emitConnectionError = getConnectionListener(mockConn, "error");
+        assert.strictEqual(typeof emitConnectionError, "function");
+
+        await fastify.close();
+        assert.strictEqual(log.error.mock.callCount(), 0);
     });
 });
 
 describe("redactMongoUri", () => {
     test("redacts user:password in the userinfo segment", () => {
         const out = redactMongoUri("mongodb://alice:s3cret@host:27017/db");
-        assert.strictEqual(out, "mongodb://***:***@host:27017/db");
+        assert.ok(out.startsWith("mongodb://***@host:27017/db"));
+        assert.ok(!out.includes("alice"));
+        assert.ok(!out.includes("s3cret"));
     });
 
     test("redacts username without password", () => {
@@ -238,7 +399,7 @@ describe("redactMongoUri", () => {
 
     test("redacts mongodb+srv URIs", () => {
         const out = redactMongoUri("mongodb+srv://alice:s3cret@cluster.mongodb.net/db");
-        assert.strictEqual(out, "mongodb+srv://***:***@cluster.mongodb.net/db");
+        assert.strictEqual(out, "mongodb+srv://***@cluster.mongodb.net/db");
     });
 
     test("redacts password query-string parameter", () => {
@@ -255,7 +416,7 @@ describe("redactMongoUri", () => {
         assert.ok(!out.includes("s3cret"), "userinfo password must not appear");
         assert.ok(!out.includes("hunter2"), "query password must not appear");
         assert.ok(!out.includes("abc"), "query token must not appear");
-        assert.ok(out.includes("***:***@"), "userinfo redacted");
+        assert.ok(out.includes("***@"), "userinfo redacted");
     });
 
     test("matches sensitive query keys case-insensitively", () => {
@@ -271,8 +432,54 @@ describe("redactMongoUri", () => {
     });
 
     test("falls back to coarse redaction on malformed URI", () => {
-        const out = redactMongoUri("not-a-uri-but-//alice:s3cret@somewhere");
+        const out = redactMongoUri(
+            "not-a-uri-but-//alice:s3cret@somewhere?password=hunter2&safe=value",
+        );
         assert.ok(!out.includes("alice:s3cret"));
+        assert.ok(!out.includes("hunter2"));
+        assert.ok(out.includes("safe=value"));
         assert.ok(out.includes("***"));
+    });
+
+    test("redacts query credentials in multi-host URIs with explicit ports", () => {
+        const out = redactMongoUri(
+            "mongodb://alice:s3cret@h1:27017,h2:27017,h3:27017/db?tlsCertificateKeyFilePassword=hunter2&replicaSet=rs0",
+        );
+
+        assert.ok(!out.includes("alice"));
+        assert.ok(!out.includes("s3cret"));
+        assert.ok(!out.includes("hunter2"));
+        assert.ok(out.includes("h1:27017,h2:27017,h3:27017"));
+        assert.ok(out.includes("replicaSet=rs0"));
+    });
+
+    test("redacts generic query credentials in multi-host URIs without userinfo", () => {
+        const out = redactMongoUri(
+            "mongodb://h1:27017,h2:27017/db?password=hunter2&authSource=admin",
+        );
+
+        assert.ok(!out.includes("hunter2"));
+        assert.ok(out.includes("password=***"));
+        assert.ok(out.includes("authSource=admin"));
+    });
+
+    test("redacts proxy credentials and authentication mechanism properties", () => {
+        const out = redactMongoUri(
+            "mongodb://host:27017/db?proxyUsername=alice&proxyPassword=s3cret&authMechanismProperties=AWS_SESSION_TOKEN:token123,SERVICE_NAME:mongodb",
+        );
+
+        assert.ok(!out.includes("alice"));
+        assert.ok(!out.includes("s3cret"));
+        assert.ok(!out.includes("token123"));
+        assert.ok(out.includes("proxyUsername=***"));
+        assert.ok(out.includes("proxyPassword=***"));
+    });
+
+    test("redacts percent-encoded sensitive query keys", () => {
+        const out = redactMongoUri("mongodb://host:27017/db?pass%77ord=hunter2&safe=value");
+
+        assert.ok(!out.includes("hunter2"));
+        assert.ok(out.includes("password=***"));
+        assert.ok(out.includes("safe=value"));
     });
 });

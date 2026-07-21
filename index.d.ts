@@ -1,5 +1,5 @@
-import { FastifyPluginAsync } from "fastify";
-import { Connection, ConnectOptions } from "mongoose";
+import type { FastifyPluginAsync } from "fastify";
+import type { Connection, ConnectOptions } from "mongoose";
 
 declare module "fastify" {
     interface FastifyInstance {
@@ -10,7 +10,7 @@ declare module "fastify" {
     }
 }
 
-export interface FastifyMongooseOptions extends ConnectOptions {
+export type FastifyMongooseOptions = Partial<ConnectOptions> & {
     /**
      * The MongoDB URI to connect to.
      */
@@ -22,18 +22,25 @@ export interface FastifyMongooseOptions extends ConnectOptions {
     waitForConnection?: boolean;
 
     /**
-     * Optionally set a connection name. Useful for debugging specific connections.
+     * Optional MongoDB driver identifier forwarded as `driverInfo.name`.
+     * This does not change the Mongoose connection name.
      */
     name?: string;
-}
+};
 
-export type FastifyMongoosePluginOptions = FastifyMongooseOptions | string;
+export type FastifyMongoosePluginOptions = FastifyMongooseOptions;
+
+/**
+ * Redacts credentials from a MongoDB connection URI before logging.
+ */
+export function redactMongoUri(uri: string): string;
 
 /**
  * Fastify Mongoose Plugin
  *
- * Accepts either a FastifyMongooseOptions object or a connection string.
+ * TypeScript consumers should register the plugin with a FastifyMongooseOptions object.
+ * The runtime-only string shortcut remains available to JavaScript consumers.
  */
-declare const fastifyMongoose: FastifyPluginAsync<FastifyMongoosePluginOptions>;
+declare const fastifyMongoose: FastifyPluginAsync<FastifyMongooseOptions>;
 
 export default fastifyMongoose;
