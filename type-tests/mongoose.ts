@@ -12,6 +12,13 @@ const options = {
     driverInfo: { name: "overridden", version: "1.0.0" },
     maxPoolSize: 10,
     name: "mongoose-consumer",
+    initialConnectionRetry: {
+        factor: 2,
+        initialDelayMs: 100,
+        maxDelayMs: 1000,
+        signal: new AbortController().signal,
+        timeoutMs: 5000,
+    },
     uri: "mongodb://127.0.0.1:27017/app",
     waitForConnection: false,
 } satisfies FastifyMongooseOptions;

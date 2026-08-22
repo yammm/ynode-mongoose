@@ -24,7 +24,7 @@ npm install @ynode/mongoose mongoose
 
 ## Usage
 
-Register the plugin with your Fastify instance. You MUST provide a `uri` option. By default, startup waits for MongoDB (`waitForConnection: true`). The plugin consumes `uri`, `waitForConnection`, and `name`; all remaining options are passed to `connection.openUri(uri, options)`.
+Register the plugin with your Fastify instance. You MUST provide a `uri` option. By default, startup waits for MongoDB (`waitForConnection: true`). The plugin consumes `uri`, `waitForConnection`, `name`, and `initialConnectionRetry`; all remaining options are passed to `connection.openUri(uri, options)`.
 
 ### Registering the Plugin
 
@@ -55,6 +55,12 @@ await fastify.register(fastifyMongoose, "mongodb://localhost:27017/my_database")
 await fastify.register(fastifyMongoose, {
     uri: "mongodb://localhost:27017/my_database",
     waitForConnection: false,
+    initialConnectionRetry: {
+        timeoutMs: 30_000,
+        initialDelayMs: 100,
+        maxDelayMs: 5_000,
+        factor: 2,
+    },
 });
 ```
 
@@ -93,18 +99,21 @@ start();
 
 ## Options
 
-This plugin consumes `uri`, `waitForConnection`, and `name`. It forwards all remaining options to `connection.openUri(uri, options)` from the official `mongoose` library.
+This plugin consumes `uri`, `waitForConnection`, `name`, and `initialConnectionRetry`. It forwards all remaining options to `connection.openUri(uri, options)` from the official `mongoose` library.
 
-- `waitForConnection` (boolean, default: `true`): if `true`, `fastify.ready()` fails when initial MongoDB connection fails. If `false`, startup continues while one initial connection attempt runs in the background. The plugin does not retry a failed initial attempt; Mongoose reconnects automatically only after an initial connection succeeds.
+- `waitForConnection` (boolean, default: `true`): if `true`, `fastify.ready()` fails when initial MongoDB connection fails. If `false`, startup continues while the initial connection runs in the background. With the default retry-disabled policy, only one attempt is made; Mongoose reconnects automatically only after an initial connection succeeds.
 - `name` (string, optional): MongoDB driver identifier merged into `driverInfo.name`. It overrides an existing `driverInfo.name`, preserves other `driverInfo` fields such as `version` and `platform`, and does not change the Mongoose connection name.
+- `initialConnectionRetry` (boolean or object, default: `false`): opt in to retrying the initial connection with bounded exponential backoff. `true` uses a 30-second total deadline, 100 ms initial delay, 5-second maximum delay, and factor 2. The object form accepts `timeoutMs`, `initialDelayMs`, `maxDelayMs`, `factor`, and an external `signal`.
 
 For a full list of available options, please see the **[official `mongoose` documentation](https://mongoosejs.com/docs/api/connection.html)**.
 
 ## Failure Behavior
 
 - The plugin starts connecting during Fastify `onReady`.
-- `waitForConnection: true` (default): startup fails if the initial connection attempt fails.
-- `waitForConnection: false`: startup is non-blocking and one failed initial attempt is logged without retrying.
+- `waitForConnection: true` (default): startup fails if the initial connection attempt fails. With retry enabled, startup remains pending until a connection succeeds, the total deadline expires, or cancellation is requested.
+- `waitForConnection: false`: startup is non-blocking. Without retry, one failed initial attempt is logged. With retry enabled, the bounded retry loop continues in the background.
+- Retry is disabled by default, so existing startup behavior is unchanged. Deadline exhaustion uses error code `MONGOOSE_INITIAL_CONNECT_TIMEOUT`; cancellation uses an `AbortError` with code `MONGOOSE_INITIAL_CONNECT_ABORTED`.
+- Fastify shutdown cancels any retry-enabled background attempt before awaiting `connection.close()`. Supplying `initialConnectionRetry.signal` allows application code to cancel independently without closing Fastify.
 - Connection lifecycle events (`connected`, `disconnected`, `reconnected`, `error`, `close`) are logged. Intentional shutdown disconnects are not warned as outages.
 - On shutdown, the plugin awaits `connection.close()`. Mongoose safely joins connections that are still connecting or already disconnecting.
 

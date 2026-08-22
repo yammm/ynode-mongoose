@@ -40,6 +40,19 @@ export interface MongooseConnectionHelpers {
 
 export type FastifyMongooseConnection = Connection & MongooseConnectionHelpers;
 
+export interface MongooseInitialConnectionRetryOptions {
+    /** Total retry deadline in milliseconds. Default: 30000. */
+    timeoutMs?: number;
+    /** Delay after the first failed attempt in milliseconds. Default: 100. */
+    initialDelayMs?: number;
+    /** Maximum delay between attempts in milliseconds. Default: 5000. */
+    maxDelayMs?: number;
+    /** Exponential multiplier applied after each failed attempt. Default: 2. */
+    factor?: number;
+    /** Optional external cancellation signal. Fastify shutdown always cancels retries. */
+    signal?: AbortSignal;
+}
+
 export type FastifyMongooseOptions = Partial<ConnectOptions> & {
     /**
      * The MongoDB URI to connect to.
@@ -50,6 +63,12 @@ export type FastifyMongooseOptions = Partial<ConnectOptions> & {
      * If true (default), Fastify startup fails when initial MongoDB connection fails.
      */
     waitForConnection?: boolean;
+
+    /**
+     * Opt-in bounded retry for the initial MongoDB connection. Disabled by
+     * default. `true` uses the default retry policy.
+     */
+    initialConnectionRetry?: boolean | MongooseInitialConnectionRetryOptions;
 
     /**
      * Optional MongoDB driver identifier forwarded as `driverInfo.name`.

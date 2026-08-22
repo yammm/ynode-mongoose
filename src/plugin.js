@@ -32,6 +32,7 @@ import { redactConnectionString } from "mongodb-connection-string-url";
 import mongoose from "mongoose";
 
 import { attachHealth } from "./health.js";
+import { connectWithRetry, normalizeInitialConnectionRetry } from "./retry.js";
 
 /**
  * Query-string parameter names whose values may carry credentials and must
@@ -115,16 +116,19 @@ export function redactMongoUri(uri) {
  *
  * @param {FastifyInstance} fastify - The Fastify instance.
  * @param {object|string} options - Plugin options, or the URI string directly.
- *   All keys other than `uri`, `waitForConnection`, and `name` are forwarded
- *   to `connection.openUri()` as Mongoose connection options.
+ *   All keys other than `uri`, `waitForConnection`, `name`, and
+ *   `initialConnectionRetry` are forwarded to `connection.openUri()` as
+ *   Mongoose connection options.
  * @param {string} options.uri - MongoDB connection URI.
  * @param {boolean} [options.waitForConnection=true] - If true, startup fails
- *   when the initial MongoDB connection fails. If false, one connection
- *   attempt runs in the background and errors are logged but do not block boot.
+ *   when the initial MongoDB connection fails. If false, initial connection
+ *   work runs in the background and errors do not block boot. Retry is opt-in.
  * @param {string} [options.name] - Optional MongoDB driver identifier merged
  *   into the forwarded `driverInfo` object as `driverInfo.name`. It overrides
  *   an existing `driverInfo.name`, preserves other `driverInfo` fields, and
  *   does not change the Mongoose connection name.
+ * @param {boolean|object} [options.initialConnectionRetry=false] - Opt-in,
+ *   bounded exponential retry policy for the initial connection.
  * @returns {Promise<void>}
  */
 export default fp(
@@ -141,10 +145,11 @@ export default fp(
         let opts = {};
         let waitForConnection = true;
         let name;
+        let initialConnectionRetry;
 
         if (options && typeof options === "object") {
             // Destructure the 'uri' property and collect the rest into a new object 'opts'
-            ({ uri, waitForConnection = true, name, ...opts } = options);
+            ({ uri, waitForConnection = true, name, initialConnectionRetry, ...opts } = options);
         }
 
         if (!uri || typeof uri !== "string") {
@@ -159,12 +164,18 @@ export default fp(
         if (name !== undefined) {
             opts.driverInfo = { ...opts.driverInfo, name };
         }
+        const retry = normalizeInitialConnectionRetry(initialConnectionRetry);
 
         const log = fastify.log.child({ name: "@ynode/mongoose" });
 
         const connectionLabel = redactMongoUri(uri);
         const conn = mongoose.createConnection();
         let intentionalDisconnect = false;
+        const retryAbortController = new AbortController();
+        const retrySignal = retry?.signal
+            ? AbortSignal.any([retryAbortController.signal, retry.signal])
+            : retryAbortController.signal;
+        let backgroundConnectionPromise = null;
 
         attachHealth(conn);
 
@@ -224,12 +235,37 @@ export default fp(
         });
 
         fastify.addHook("onReady", async () => {
+            const connect = () => {
+                if (!retry) {
+                    return conn.openUri(uri, { ...opts });
+                }
+                return connectWithRetry({
+                    connection: conn,
+                    uri,
+                    connectionOptions: opts,
+                    retry,
+                    signal: retrySignal,
+                    onRetry: ({ attempt, delayMs, error }) => {
+                        log.warn(
+                            { err: error, attempt, delayMs },
+                            `Mongoose initial connection failed; retrying [${conn.id}] ${connectionLabel}`,
+                        );
+                    },
+                });
+            };
+
             if (!waitForConnection) {
-                // Intentional fire-and-forget: connect in the background so server
-                // starts immediately. This is a single attempt; Mongoose only
-                // auto-reconnects after an initial connection succeeds.
-                conn.openUri(uri, { ...opts }).catch((error) => {
+                // Intentional fire-and-forget: connect in the background so the
+                // server starts immediately. Retry remains opt-in.
+                backgroundConnectionPromise = connect().catch((error) => {
                     if (intentionalDisconnect) {
+                        return;
+                    }
+                    if (error?.code === "MONGOOSE_INITIAL_CONNECT_ABORTED") {
+                        log.warn(
+                            { err: error },
+                            `Mongoose initial connection retry was aborted [${conn.id}] ${connectionLabel}`,
+                        );
                         return;
                     }
                     log.error(
@@ -241,7 +277,7 @@ export default fp(
             }
 
             try {
-                await conn.openUri(uri, { ...opts });
+                await connect();
             } catch (error) {
                 log.error(
                     { err: error },
@@ -253,6 +289,10 @@ export default fp(
 
         fastify.addHook("onClose", async () => {
             intentionalDisconnect = true;
+            retryAbortController.abort(new Error("Fastify is closing"));
+            if (retry && backgroundConnectionPromise) {
+                await backgroundConnectionPromise;
+            }
             log.debug(
                 `Attempting to close our Mongoose connection [${conn.id}] ${connectionLabel}`,
             );

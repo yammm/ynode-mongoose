@@ -255,6 +255,169 @@ describe("@ynode/mongoose", () => {
         await fastify.close();
     });
 
+    test("should retry the initial connection with consumed plugin options", async () => {
+        const fastify = Fastify();
+        let attempt = 0;
+        const mockConn = makeMockConnection({
+            id: 17,
+            openUri: async () => {
+                ++attempt;
+                if (attempt === 1) {
+                    throw new Error("database starting");
+                }
+            },
+        });
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, {
+            uri: "mongodb://localhost:27017/test-retry",
+            maxPoolSize: 6,
+            initialConnectionRetry: {
+                timeoutMs: 100,
+                initialDelayMs: 1,
+                maxDelayMs: 2,
+                factor: 2,
+            },
+        });
+        await fastify.ready();
+
+        assert.strictEqual(mockConn.openUri.mock.callCount(), 2);
+        for (const call of mockConn.openUri.mock.calls) {
+            assert.deepStrictEqual(call.arguments, [
+                "mongodb://localhost:27017/test-retry",
+                {
+                    maxPoolSize: 6,
+                },
+            ]);
+        }
+        await fastify.close();
+    });
+
+    test("should bound retry-enabled blocking startup by its total deadline", async (t) => {
+        const keepAlive = setInterval(() => {}, 1000);
+        t.after(() => clearInterval(keepAlive));
+        const fastify = Fastify();
+        const mockConn = makeMockConnection({
+            id: 18,
+            openUri: () => new Promise(() => {}),
+        });
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, {
+            uri: "mongodb://localhost:27017/test-retry-timeout",
+            initialConnectionRetry: {
+                timeoutMs: 20,
+                initialDelayMs: 1,
+                maxDelayMs: 2,
+                factor: 2,
+            },
+        });
+
+        await assert.rejects(fastify.ready(), { code: "MONGOOSE_INITIAL_CONNECT_TIMEOUT" });
+        await fastify.close();
+    });
+
+    test("should continue retry-enabled initial connection after non-blocking startup", async () => {
+        const fastify = Fastify();
+        let attempt = 0;
+        let markConnected;
+        const connected = new Promise((resolve) => {
+            markConnected = resolve;
+        });
+        const mockConn = makeMockConnection({
+            id: 19,
+            openUri: async () => {
+                ++attempt;
+                if (attempt === 1) {
+                    throw new Error("database starting");
+                }
+                markConnected();
+            },
+        });
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, {
+            uri: "mongodb://localhost:27017/test-retry-background",
+            waitForConnection: false,
+            initialConnectionRetry: {
+                timeoutMs: 100,
+                initialDelayMs: 1,
+                maxDelayMs: 2,
+                factor: 2,
+            },
+        });
+
+        await fastify.ready();
+        await connected;
+        assert.strictEqual(mockConn.openUri.mock.callCount(), 2);
+        await fastify.close();
+    });
+
+    test("should cancel retry-enabled background connection before closing", async () => {
+        const fastify = Fastify();
+        const mockConn = makeMockConnection({
+            id: 20,
+            openUri: () => new Promise(() => {}),
+        });
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, {
+            uri: "mongodb://localhost:27017/test-retry-close",
+            waitForConnection: false,
+            initialConnectionRetry: {
+                timeoutMs: 5000,
+                initialDelayMs: 1000,
+                maxDelayMs: 1000,
+                factor: 2,
+            },
+        });
+        await fastify.ready();
+
+        await fastify.close();
+
+        assert.strictEqual(mockConn.openUri.mock.callCount(), 1);
+        assert.strictEqual(mockConn.close.mock.callCount(), 1);
+    });
+
+    test("should honor an externally aborted initial retry signal", async () => {
+        const fastify = Fastify();
+        const controller = new AbortController();
+        controller.abort(new Error("deployment cancelled"));
+        const mockConn = makeMockConnection({ id: 21 });
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, {
+            uri: "mongodb://localhost:27017/test-retry-abort",
+            initialConnectionRetry: { signal: controller.signal },
+        });
+
+        await assert.rejects(fastify.ready(), {
+            name: "AbortError",
+            code: "MONGOOSE_INITIAL_CONNECT_ABORTED",
+        });
+        assert.strictEqual(mockConn.openUri.mock.callCount(), 0);
+        await fastify.close();
+    });
+
+    test("should reject invalid initial connection retry configuration", async () => {
+        const fastify = Fastify();
+        const createConnection = mock.method(mongoose, "createConnection", () =>
+            makeMockConnection({ id: 22 }),
+        );
+
+        await assert.rejects(
+            async () => {
+                await fastify.register(plugin, {
+                    uri: "mongodb://localhost:27017/test-retry-invalid",
+                    initialConnectionRetry: { timeoutMs: 0 },
+                });
+            },
+            { message: "initialConnectionRetry.timeoutMs must be greater than 0" },
+        );
+        assert.strictEqual(createConnection.mock.callCount(), 0);
+        await fastify.close();
+    });
+
     test("should throw if uri is missing", async () => {
         const fastify = Fastify();
 
