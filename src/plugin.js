@@ -127,7 +127,11 @@ export function redactMongoUri(uri) {
  */
 export default fp(
     async function mongoosePlugin(fastify, options) {
-        if (fastify.hasDecorator("mongoose")) {
+        const alreadyRegistered =
+            typeof fastify.hasDecorator === "function"
+                ? fastify.hasDecorator("mongoose")
+                : Reflect.has(fastify, "mongoose");
+        if (alreadyRegistered) {
             throw new Error("@ynode/mongoose has already been registered");
         }
 

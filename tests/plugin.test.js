@@ -34,6 +34,36 @@ function capturePluginLog(fastify) {
 }
 
 describe("@ynode/mongoose", () => {
+    test("should support Fastify-compatible hosts without hasDecorator", async () => {
+        const mockConn = makeMockConnection({ id: 16 });
+        mock.method(mongoose, "createConnection", () => mockConn);
+        const hooks = new Map();
+        const log = {
+            debug: mock.fn(),
+            error: mock.fn(),
+            info: mock.fn(),
+            warn: mock.fn(),
+        };
+        const fastify = {
+            log: { child: () => log },
+            decorate(name, value) {
+                this[name] = value;
+            },
+            addHook(name, hook) {
+                hooks.set(name, hook);
+            },
+        };
+
+        await plugin(fastify, { uri: "mongodb://localhost:27017/test-compatible-host" });
+        await hooks.get("onReady")();
+
+        assert.strictEqual(fastify.mongoose, mockConn);
+        assert.strictEqual(mockConn.openUri.mock.callCount(), 1);
+
+        await hooks.get("onClose")();
+        assert.strictEqual(mockConn.close.mock.callCount(), 1);
+    });
+
     test("should register the plugin", async () => {
         const fastify = Fastify();
 
