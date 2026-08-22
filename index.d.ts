@@ -6,9 +6,39 @@ declare module "fastify" {
         /**
          * The Mongoose connection instance.
          */
-        mongoose: Connection;
+        mongoose: FastifyMongooseConnection;
     }
 }
+
+export interface MongooseReadinessStatus {
+    isReady: boolean;
+    readyState: number;
+}
+
+export interface MongooseHealthError {
+    name: string;
+    message: string;
+    code?: string | number;
+}
+
+export interface MongooseHealthcheckOptions {
+    /** Ping deadline in milliseconds. Defaults to 5000. */
+    timeoutMs?: number;
+}
+
+export interface MongooseHealthcheckResult extends MongooseReadinessStatus {
+    ok: boolean;
+    ping?: number;
+    latencyMs: number;
+    error?: MongooseHealthError;
+}
+
+export interface MongooseConnectionHelpers {
+    readiness(): MongooseReadinessStatus;
+    healthcheck(options?: MongooseHealthcheckOptions): Promise<MongooseHealthcheckResult>;
+}
+
+export type FastifyMongooseConnection = Connection & MongooseConnectionHelpers;
 
 export type FastifyMongooseOptions = Partial<ConnectOptions> & {
     /**

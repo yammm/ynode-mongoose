@@ -1,4 +1,9 @@
-import fastifyMongoose, { redactMongoUri, type FastifyMongooseOptions } from "@ynode/mongoose";
+import fastifyMongoose, {
+    redactMongoUri,
+    type FastifyMongooseOptions,
+    type MongooseHealthcheckResult,
+    type MongooseReadinessStatus,
+} from "@ynode/mongoose";
 import metadata from "@ynode/mongoose/package.json" with { type: "json" };
 import Fastify from "fastify";
 import type { Connection } from "mongoose";
@@ -15,6 +20,8 @@ const app = Fastify();
 await app.register(fastifyMongoose, options);
 
 const connection: Connection = app.mongoose;
+const readiness: MongooseReadinessStatus = app.mongoose.readiness();
+const health: MongooseHealthcheckResult = await app.mongoose.healthcheck({ timeoutMs: 100 });
 const redacted: string = redactMongoUri("mongodb://user:secret@127.0.0.1/app");
 
 // @ts-expect-error The object form requires a MongoDB URI.
@@ -25,5 +32,7 @@ await app.register(fastifyMongoose, "mongodb://127.0.0.1:27017/app");
 
 metadata.name satisfies string;
 void connection;
+void health;
 void missingUri;
+void readiness;
 void redacted;

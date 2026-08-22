@@ -86,6 +86,8 @@ describe("@ynode/mongoose", () => {
             mockConn,
             "mongoose decorator should be the connection object",
         );
+        assert.strictEqual(typeof fastify.mongoose.readiness, "function");
+        assert.strictEqual(typeof fastify.mongoose.healthcheck, "function");
 
         await fastify.close();
     });

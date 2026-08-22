@@ -108,7 +108,22 @@ For a full list of available options, please see the **[official `mongoose` docu
 - Connection lifecycle events (`connected`, `disconnected`, `reconnected`, `error`, `close`) are logged. Intentional shutdown disconnects are not warned as outages.
 - On shutdown, the plugin awaits `connection.close()`. Mongoose safely joins connections that are still connecting or already disconnecting.
 
-For readiness checks, inspect `fastify.mongoose.readyState` (`1` means connected). The plugin does not register a health route or perform database pings.
+## Health and Readiness
+
+The decorated connection exposes non-throwing probe helpers without registering an HTTP route:
+
+- `fastify.mongoose.readiness()` returns the current Mongoose `readyState` and whether it is connected.
+- `fastify.mongoose.healthcheck()` sends a MongoDB `ping` and always resolves with status, latency, and a serializable error when unhealthy.
+
+The ping is bounded to 5000 ms by default so a stalled connection cannot hang a probe. Override it per call with `healthcheck({ timeoutMs })`.
+
+```javascript
+const readiness = fastify.mongoose.readiness();
+// { isReady: true, readyState: 1 }
+
+const health = await fastify.mongoose.healthcheck({ timeoutMs: 1000 });
+// { ok: true, ping: 1, latencyMs: 2, isReady: true, readyState: 1 }
+```
 
 ## License
 

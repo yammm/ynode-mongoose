@@ -31,6 +31,8 @@ import fp from "fastify-plugin";
 import { redactConnectionString } from "mongodb-connection-string-url";
 import mongoose from "mongoose";
 
+import { attachHealth } from "./health.js";
+
 /**
  * Query-string parameter names whose values may carry credentials and must
  * be redacted before logging. Matched case-insensitively.
@@ -163,6 +165,8 @@ export default fp(
         const connectionLabel = redactMongoUri(uri);
         const conn = mongoose.createConnection();
         let intentionalDisconnect = false;
+
+        attachHealth(conn);
 
         // sharing is caring
         fastify.decorate("mongoose", conn);
