@@ -19,7 +19,7 @@ app.get("/", async function (_request, reply) {
 
     return {
         status: connected ? "ok" : "degraded",
-        database: states[readyState] || "unknown",
+        database: states[readyState] ?? "unknown",
     };
 });
 
