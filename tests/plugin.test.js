@@ -113,6 +113,63 @@ describe("@ynode/mongoose", () => {
         await fastify.close();
     });
 
+    test("should forward name option to openUri as driverInfo.name", async () => {
+        const fastify = Fastify();
+        const mockConn = makeMockConnection({ id: 13 });
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, {
+            uri: "mongodb://localhost:27017/test-driver-info",
+            name: "my-app",
+            maxPoolSize: 3,
+        });
+        await fastify.ready();
+
+        const openUriCall = mockConn.openUri.mock.calls[0];
+        assert.deepStrictEqual(openUriCall.arguments[1], {
+            driverInfo: { name: "my-app" },
+            maxPoolSize: 3,
+        });
+
+        await fastify.close();
+    });
+
+    test("should merge name option into a caller-supplied driverInfo", async () => {
+        const fastify = Fastify();
+        const mockConn = makeMockConnection({ id: 14 });
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await fastify.register(plugin, {
+            uri: "mongodb://localhost:27017/test-driver-info-merge",
+            name: "my-app",
+            driverInfo: { version: "1.2.3" },
+        });
+        await fastify.ready();
+
+        const openUriCall = mockConn.openUri.mock.calls[0];
+        assert.deepStrictEqual(openUriCall.arguments[1], {
+            driverInfo: { version: "1.2.3", name: "my-app" },
+        });
+
+        await fastify.close();
+    });
+
+    test("should throw if name is not a non-empty string", async () => {
+        const fastify = Fastify();
+        const mockConn = makeMockConnection({ id: 15 });
+        mock.method(mongoose, "createConnection", () => mockConn);
+
+        await assert.rejects(
+            async () => {
+                await fastify.register(plugin, {
+                    uri: "mongodb://localhost:27017/test",
+                    name: 42,
+                });
+            },
+            { message: "@ynode/mongoose requires options.name to be a non-empty string" },
+        );
+    });
+
     test("should fail ready when openUri rejects by default", async () => {
         const fastify = Fastify();
 

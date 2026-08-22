@@ -102,6 +102,9 @@ export function redactMongoUri(uri) {
  * @param {boolean} [options.waitForConnection=true] - If true, startup fails
  *   when the initial MongoDB connection fails. If false, one connection
  *   attempt runs in the background and errors are logged but do not block boot.
+ * @param {string} [options.name] - Optional MongoDB driver identifier forwarded
+ *   to `connection.openUri()` as `driverInfo.name`. Does not change the
+ *   Mongoose connection name.
  * @returns {Promise<void>}
  */
 export default fp(
@@ -113,10 +116,11 @@ export default fp(
         let uri = options;
         let opts = {};
         let waitForConnection = true;
+        let name;
 
         if (options && typeof options === "object") {
             // Destructure the 'uri' property and collect the rest into a new object 'opts'
-            ({ uri, waitForConnection = true, ...opts } = options);
+            ({ uri, waitForConnection = true, name, ...opts } = options);
         }
 
         if (!uri || typeof uri !== "string") {
@@ -124,6 +128,12 @@ export default fp(
         }
         if (typeof waitForConnection !== "boolean") {
             throw new Error("@ynode/mongoose requires options.waitForConnection to be a boolean");
+        }
+        if (name !== undefined && (typeof name !== "string" || name === "")) {
+            throw new Error("@ynode/mongoose requires options.name to be a non-empty string");
+        }
+        if (name !== undefined) {
+            opts.driverInfo = { ...opts.driverInfo, name };
         }
 
         const log = fastify.log.child({ name: "@ynode/mongoose" });
