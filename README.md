@@ -24,7 +24,7 @@ npm install @ynode/mongoose mongoose
 
 ## Usage
 
-Register the plugin with your Fastify instance. You MUST provide a `uri` option. By default, startup waits for MongoDB (`waitForConnection: true`). Options other than `uri` and `waitForConnection` are passed to `connection.openUri(uri, options)`.
+Register the plugin with your Fastify instance. You MUST provide a `uri` option. By default, startup waits for MongoDB (`waitForConnection: true`). The plugin consumes `uri`, `waitForConnection`, and `name`; all remaining options are passed to `connection.openUri(uri, options)`.
 
 ### Registering the Plugin
 
@@ -40,8 +40,11 @@ const fastify = Fastify({
 await fastify.register(fastifyMongoose, {
     uri: "mongodb://localhost:27017/my_database",
     waitForConnection: true,
+    // Merged into driverInfo.name; this is not the Mongoose connection name.
+    name: "my-fastify-service",
     // Options below are passed to connection.openUri(uri, options)
     maxPoolSize: 10,
+    driverInfo: { version: "1.0.0" },
 });
 
 // JavaScript also supports a runtime-only connection-string shortcut.
@@ -90,9 +93,10 @@ start();
 
 ## Options
 
-This plugin forwards options other than `uri` and `waitForConnection` to `connection.openUri(uri, options)` from the official `mongoose` library.
+This plugin consumes `uri`, `waitForConnection`, and `name`. It forwards all remaining options to `connection.openUri(uri, options)` from the official `mongoose` library.
 
 - `waitForConnection` (boolean, default: `true`): if `true`, `fastify.ready()` fails when initial MongoDB connection fails. If `false`, startup continues while one initial connection attempt runs in the background. The plugin does not retry a failed initial attempt; Mongoose reconnects automatically only after an initial connection succeeds.
+- `name` (string, optional): MongoDB driver identifier merged into `driverInfo.name`. It overrides an existing `driverInfo.name`, preserves other `driverInfo` fields such as `version` and `platform`, and does not change the Mongoose connection name.
 
 For a full list of available options, please see the **[official `mongoose` documentation](https://mongoosejs.com/docs/api/connection.html)**.
 

@@ -113,15 +113,16 @@ export function redactMongoUri(uri) {
  *
  * @param {FastifyInstance} fastify - The Fastify instance.
  * @param {object|string} options - Plugin options, or the URI string directly.
- *   All keys other than `uri` and `waitForConnection` are forwarded to
- *   `connection.openUri()` as Mongoose connection options.
+ *   All keys other than `uri`, `waitForConnection`, and `name` are forwarded
+ *   to `connection.openUri()` as Mongoose connection options.
  * @param {string} options.uri - MongoDB connection URI.
  * @param {boolean} [options.waitForConnection=true] - If true, startup fails
  *   when the initial MongoDB connection fails. If false, one connection
  *   attempt runs in the background and errors are logged but do not block boot.
- * @param {string} [options.name] - Optional MongoDB driver identifier forwarded
- *   to `connection.openUri()` as `driverInfo.name`. Does not change the
- *   Mongoose connection name.
+ * @param {string} [options.name] - Optional MongoDB driver identifier merged
+ *   into the forwarded `driverInfo` object as `driverInfo.name`. It overrides
+ *   an existing `driverInfo.name`, preserves other `driverInfo` fields, and
+ *   does not change the Mongoose connection name.
  * @returns {Promise<void>}
  */
 export default fp(
