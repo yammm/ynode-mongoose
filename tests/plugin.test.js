@@ -532,11 +532,30 @@ describe("redactMongoUri", () => {
         assert.ok(out.includes("proxyPassword=***"));
     });
 
-    test("redacts percent-encoded sensitive query keys", () => {
+    test("redacts percent-encoded sensitive query keys without renaming them", () => {
         const out = redactMongoUri("mongodb://host:27017/db?pass%77ord=hunter2&safe=value");
 
         assert.ok(!out.includes("hunter2"));
-        assert.ok(out.includes("password=***"));
+        assert.ok(out.includes("pass%77ord=***"));
         assert.ok(out.includes("safe=value"));
+    });
+
+    test("redacts every occurrence of a duplicate sensitive key", () => {
+        const out = redactMongoUri(
+            "mongodb://host:27017/db?token=first&authSource=admin&token=second",
+        );
+
+        assert.strictEqual(out, "mongodb://host:27017/db?token=***&authSource=admin&token=***");
+    });
+
+    test("preserves the original encoding of non-sensitive values", () => {
+        const out = redactMongoUri(
+            "mongodb://host:27017/db?readPreferenceTags=dc%3Any%2Crack%3A1&password=hunter2",
+        );
+
+        assert.strictEqual(
+            out,
+            "mongodb://host:27017/db?readPreferenceTags=dc%3Any%2Crack%3A1&password=***",
+        );
     });
 });

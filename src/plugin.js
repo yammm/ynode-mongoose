@@ -48,8 +48,28 @@ const SENSITIVE_QUERY_PARAMS = new Set([
 ]);
 
 /**
+ * Determines whether a raw query-parameter key names a sensitive credential.
+ * Percent-encoded keys are decoded before matching so encoding cannot be used
+ * to smuggle a credential past redaction.
+ * @param {string} rawKey - Query-parameter key exactly as it appears in the URI.
+ * @returns {boolean} True when the key matches a sensitive parameter name.
+ */
+function isSensitiveQueryParam(rawKey) {
+    let key = rawKey;
+    try {
+        key = decodeURIComponent(rawKey);
+    } catch {
+        // Malformed percent-encoding: match against the raw key bytes instead.
+    }
+    return SENSITIVE_QUERY_PARAMS.has(key.toLowerCase());
+}
+
+/**
  * Redacts generic credential-like query parameters after the MongoDB driver's
  * own connection-string redactor has handled driver-specific credentials.
+ * Sensitive values are replaced in place on the raw string, so duplicate keys,
+ * parameter order, and the original percent-encoding of every other byte are
+ * preserved byte-for-byte.
  * @param {string} uri - Partially redacted MongoDB connection URI.
  * @returns {string} URI with generic sensitive query values redacted.
  */
@@ -61,18 +81,15 @@ function redactSensitiveQueryParams(uri) {
 
     const fragmentIndex = uri.indexOf("#", queryIndex);
     const queryEnd = fragmentIndex === -1 ? uri.length : fragmentIndex;
-    const params = new URLSearchParams(uri.slice(queryIndex + 1, queryEnd));
-    const sensitiveKeys = [];
-    for (const key of params.keys()) {
-        if (SENSITIVE_QUERY_PARAMS.has(key.toLowerCase())) {
-            sensitiveKeys.push(key);
+    const query = uri.slice(queryIndex + 1, queryEnd);
+    const redacted = query.replace(/([^&;=]+)=([^&;]*)/g, (match, rawKey) => {
+        if (!isSensitiveQueryParam(rawKey)) {
+            return match;
         }
-    }
-    for (const key of sensitiveKeys) {
-        params.set(key, "***");
-    }
+        return `${rawKey}=***`;
+    });
 
-    return `${uri.slice(0, queryIndex + 1)}${params}${uri.slice(queryEnd)}`;
+    return `${uri.slice(0, queryIndex + 1)}${redacted}${uri.slice(queryEnd)}`;
 }
 
 /**
