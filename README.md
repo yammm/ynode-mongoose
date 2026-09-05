@@ -14,6 +14,10 @@ A lightweight **Fastify** plugin that exposes a single **mongoose** client (`mon
 - ✅ Clean Fastify integration with proper startup/shutdown hooks
 - ✅ Simple API: `fastify.mongoose` everywhere in your app
 
+## Node.js support
+
+This package requires Node.js 20.19.0 or newer. CI exercises the exact 20.19.0, 22.13.0, and 24.0.0 boundaries. Node.js 20 remains tested only to preserve the current major-version contract even though upstream support has ended; use Node.js 22 or 24 for supported production deployments. A newly released Node.js major is not considered supported until it is added to CI, even when the open `engines` range admits it.
+
 ## Installation
 
 Requires Node.js 20.19.0 or newer, Fastify 5, and Mongoose 9. Install the package and its Mongoose peer dependency:
